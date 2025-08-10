@@ -1,0 +1,50 @@
+{
+  "images": [
+    {
+      "name": "nextchat-web",
+      "context": ".",
+      "dockerfile": "Dockerfile",
+      "tags": [
+        "your-dockerhub-username/nextchat:latest"
+      ],
+      "platforms": ["linux/amd64", "linux/arm64"],
+      "target": "runner",
+      "buildArgs": {
+        "NODE_ENV": "production"
+      },
+      "labels": {
+        "org.opencontainers.image.title": "NextChat",
+        "org.opencontainers.image.source": "https://github.com/example/NextChat"
+      },
+      "cacheRef": "your-dockerhub-username/nextchat:buildcache",
+      "push": true,
+      "load": false,
+      "noCache": false,
+      "provenance": false,
+      "sbom": false
+    },
+    {
+      "name": "nextchat-web-alt",
+      "context": "ChatGPT-Next-Web",
+      "dockerfile": "Dockerfile",
+      "tags": [
+        "your-dockerhub-username/chatgpt-next-web:latest"
+      ],
+      "platforms": ["linux/amd64", "linux/arm64"],
+      "target": "runner",
+      "buildArgs": {
+        "NODE_ENV": "production"
+      },
+      "labels": {
+        "org.opencontainers.image.title": "ChatGPT-Next-Web",
+        "org.opencontainers.image.source": "https://github.com/example/NextChat"
+      },
+      "push": true,
+      "load": false,
+      "noCache": false,
+      "provenance": false,
+      "sbom": false
+    }
+  ]
+}
+

@@ -17,9 +17,15 @@ export async function handle(
   req.nextUrl.searchParams.delete("provider");
 
   const subpath = params.path.join("/");
-  const fetchUrl = `${req.headers.get(
-    "x-base-url",
-  )}/${subpath}?${req.nextUrl.searchParams.toString()}`;
+  const baseFromHeader = req.headers.get("x-base-url");
+  if (!baseFromHeader) {
+    return NextResponse.json(
+      { error: true, message: "missing x-base-url header" },
+      { status: 400 },
+    );
+  }
+
+  const fetchUrl = `${baseFromHeader}/${subpath}?${req.nextUrl.searchParams.toString()}`;
   const skipHeaders = ["connection", "host", "origin", "referer", "cookie"];
   const headers = new Headers(
     Array.from(req.headers.entries()).filter((item) => {
@@ -34,16 +40,16 @@ export async function handle(
     }),
   );
   // if dalle3 use openai api key
-    const baseUrl = req.headers.get("x-base-url");
-    if (baseUrl?.includes("api.openai.com")) {
-      if (!serverConfig.apiKey) {
-        return NextResponse.json(
-          { error: "OpenAI API key not configured" },
-          { status: 500 },
-        );
-      }
-      headers.set("Authorization", `Bearer ${serverConfig.apiKey}`);
+  const baseUrl = req.headers.get("x-base-url");
+  if (baseUrl?.includes("api.openai.com")) {
+    if (!serverConfig.apiKey) {
+      return NextResponse.json(
+        { error: "OpenAI API key not configured" },
+        { status: 500 },
+      );
     }
+    headers.set("Authorization", `Bearer ${serverConfig.apiKey}`);
+  }
 
   const controller = new AbortController();
   const fetchOptions: RequestInit = {

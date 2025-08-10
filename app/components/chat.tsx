@@ -1037,6 +1037,10 @@ function _Chat() {
   // prompt hints
   const promptStore = usePromptStore();
   const [promptHints, setPromptHints] = useState<RenderPrompt[]>([]);
+  // 请求未返回（生成中）时，禁用发送
+  const isGenerating =
+    ChatControllerPool.hasPending() ||
+    session.messages.some((m) => m.streaming);
   const onSearch = useDebouncedCallback(
     (text: string) => {
       const matchedPrompts = promptStore.search(text);
@@ -1176,6 +1180,11 @@ function _Chat() {
 
   // check if should send message
   const onInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 正在生成时禁止发送
+    if (isGenerating) {
+      e.preventDefault();
+      return;
+    }
     // if ArrowUp and no userInput, fill with last input
     if (
       e.key === "ArrowUp" &&
@@ -2121,7 +2130,10 @@ function _Chat() {
                   text={Locale.Chat.Send}
                   className={styles["chat-input-send"]}
                   type="primary"
-                  onClick={() => doSubmit(userInput)}
+                  disabled={isGenerating}
+                  onClick={() => {
+                    if (!isGenerating) doSubmit(userInput);
+                  }}
                 />
               </label>
             </div>
