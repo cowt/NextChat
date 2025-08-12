@@ -52,6 +52,7 @@ usage() {
       "buildArgs": {"NODE_ENV": "production"},
       "labels": {"org.opencontainers.image.source": "https://github.com/your-org/NextChat"},
       "cacheRef": "your-dockerhub-username/nextchat:buildcache",
+      "useRemoteCache": true,
       "push": true,
       "load": false,
       "noCache": false,
@@ -64,6 +65,7 @@ usage() {
 注意:
 - 多平台构建需要使用 --push；--load 仅支持单平台（本地加载）
 - 若未显式提供 cacheRef，将默认使用首个 tag 并追加 "-buildcache"
+ - 若将 useRemoteCache 设为 false，则不会添加 --cache-from/--cache-to，也不会默认生成 cacheRef
 USAGE
 }
 
@@ -181,16 +183,26 @@ build_image_by_index() {
   LOAD=$(jq -r ".images[$idx].load // false" "$CONFIG_FILE")
   PROVENANCE=$(jq -r ".images[$idx].provenance // false" "$CONFIG_FILE")
   SBOM=$(jq -r ".images[$idx].sbom // false" "$CONFIG_FILE")
+  local USE_REMOTE_CACHE
+  USE_REMOTE_CACHE=$(jq -r ".images[$idx].useRemoteCache // true" "$CONFIG_FILE")
 
-  mapfile -t TAGS < <(jq -r ".images[$idx].tags[]?" "$CONFIG_FILE")
-  mapfile -t PLATFORMS < <(jq -r ".images[$idx].platforms[]?" "$CONFIG_FILE")
-  mapfile -t BUILD_ARGS_KEYS < <(jq -r ".images[$idx].buildArgs | keys[]?" "$CONFIG_FILE")
-  mapfile -t LABEL_KEYS < <(jq -r ".images[$idx].labels | keys[]?" "$CONFIG_FILE")
+  # 兼容 macOS bash 3.2：不使用 mapfile
+  local IFS_BAK="$IFS"
+  IFS=$'\n'
+  TAGS=($(jq -r ".images[$idx].tags[]?" "$CONFIG_FILE"))
+  PLATFORMS=($(jq -r ".images[$idx].platforms[]?" "$CONFIG_FILE"))
+  BUILD_ARGS_KEYS=($(jq -r ".images[$idx].buildArgs | keys[]?" "$CONFIG_FILE"))
+  LABEL_KEYS=($(jq -r ".images[$idx].labels | keys[]?" "$CONFIG_FILE"))
+  IFS="$IFS_BAK"
 
   local CACHE_REF
   CACHE_REF=$(jq -r ".images[$idx].cacheRef // empty" "$CONFIG_FILE")
-  if [[ -z "$CACHE_REF" && ${#TAGS[@]} -ge 1 ]]; then
-    CACHE_REF="${TAGS[0]}-buildcache"
+  if [[ "$USE_REMOTE_CACHE" == true ]]; then
+    if [[ -z "$CACHE_REF" && ${#TAGS[@]} -ge 1 ]]; then
+      CACHE_REF="${TAGS[0]}-buildcache"
+    fi
+  else
+    CACHE_REF=""
   fi
 
   if [[ ${#PLATFORMS[@]} -gt 1 && "$LOAD" == true ]]; then

@@ -57,8 +57,8 @@ export const DEFAULT_CONFIG = {
 
   disablePromptHint: false,
 
-  dontShowMaskSplashScreen: false, // dont show splash screen when create chat
-  hideBuiltinMasks: false, // dont add builtin masks
+  dontShowMaskSplashScreen: true, // dont show splash screen when create chat
+  hideBuiltinMasks: true, // dont add builtin masks
 
   customModels: "",
   models: DEFAULT_MODELS as any as LLMModel[],
@@ -72,12 +72,12 @@ export const DEFAULT_CONFIG = {
     presence_penalty: 0,
     frequency_penalty: 0,
     sendMemory: true,
-    historyMessageCount: 4,
+    historyMessageCount: 64,
     compressMessageLengthThreshold: 1000,
     compressModel: "",
     compressProviderName: "",
     enableInjectSystemPrompts: true,
-    template: config?.template ?? DEFAULT_INPUT_TEMPLATE,
+    template: config?.template,
     size: "1024x1024" as ModelSize,
     quality: "standard" as DalleQuality,
     style: "vivid" as DalleStyle,
