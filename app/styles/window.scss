@@ -1,5 +1,5 @@
 .window-header {
-  padding: 14px 20px;
+  padding: 10px 14px;
   border-bottom: rgba(0, 0, 0, 0.1) 1px solid;
   position: relative;
 
@@ -13,7 +13,7 @@
   overflow: hidden;
 
   .window-header-main-title {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: bolder;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -23,7 +23,7 @@
   }
 
   .window-header-sub-title {
-    font-size: 14px;
+    font-size: 12px;
   }
 }
 
@@ -32,5 +32,30 @@
 }
 
 .window-action-button:not(:first-child) {
-  margin-left: 10px;
+  margin-left: 8px;
+}
+
+/* Compact action buttons in the header */
+.window-actions button {
+  padding: 8px !important;
+  border-radius: 8px;
+}
+
+/* 使用按钮组件默认的 16x16 图标尺寸，避免图标被裁切 */
+
+@media only screen and (max-width: 600px) {
+  .window-header {
+    padding: 8px 12px;
+  }
+
+  .window-header-title {
+    .window-header-main-title {
+      font-size: 16px;
+    }
+  }
+
+  .window-actions button {
+    padding: 8px !important; /* 稍微增大，避免图标裁切 */
+    border-radius: 8px;
+  }
 }

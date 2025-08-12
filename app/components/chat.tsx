@@ -483,6 +483,24 @@ function useScrollToBottom(
     lastMessagesLength.current = messages.length;
   }, [messages.length, detach, scrollDomToBottom]);
 
+  // auto scroll when content height mutates without length change (e.g., streaming)
+  useEffect(() => {
+    const dom = scrollRef.current;
+    if (!dom) return;
+    const observer = new MutationObserver(() => {
+      if (autoScroll && !detach) {
+        scrollDomToBottom();
+      }
+    });
+    observer.observe(dom, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollRef, autoScroll, detach, scrollDomToBottom]);
+
   return {
     scrollRef,
     autoScroll,
@@ -919,6 +937,56 @@ export function DeleteImageButton(props: { deleteImage: () => void }) {
   );
 }
 
+function ProgressTail(props: { active: boolean }) {
+  if (!props.active) return null;
+  return (
+    <span
+      aria-live="polite"
+      className={styles["progress-tail"]}
+      title="正在生成"
+    >
+      <span className={styles["progress-dot"]} />
+      <span className={styles["progress-dot"]} />
+      <span className={styles["progress-dot"]} />
+    </span>
+  );
+}
+
+function BusyOverlay(props: {
+  active: boolean;
+  message?: string;
+  elapsedMs?: number;
+  onCancel?: () => void;
+}) {
+  if (!props.active) return null;
+  const seconds = Math.max(0, Math.floor((props.elapsedMs ?? 0) / 1000));
+  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const ss = String(seconds % 60).padStart(2, "0");
+  return (
+    <div role="dialog" aria-modal="true" className={styles["busy-overlay"]}>
+      <div className={styles["busy-panel"]}>
+        <div className={styles["busy-spinner"]} aria-hidden />
+        <div className={styles["busy-text"]}>
+          <div className={styles["busy-title"]} aria-live="polite">
+            <div className={styles["fish-lane"]}>
+              <span className={styles["fish"]}>{"><))))>"}</span>
+            </div>
+            {/* （{mm}:{ss}） */}
+          </div>
+          <div className={`${styles["busy-bar"]} ${styles["indeterminate"]}`} />
+        </div>
+        {props.onCancel && (
+          <IconButton
+            icon={<StopIcon />}
+            // text={Locale.Chat.Actions.Stop}
+            onClick={props.onCancel}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ShortcutKeyModal(props: { onClose: () => void }) {
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const shortcuts = [
@@ -1002,22 +1070,7 @@ function _Chat() {
   const [isLoading, setIsLoading] = useState(false);
   const { submitKey, shouldSubmit } = useSubmitHandler();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isScrolledToBottom = scrollRef?.current
-    ? Math.abs(
-        scrollRef.current.scrollHeight -
-          (scrollRef.current.scrollTop + scrollRef.current.clientHeight),
-      ) <= 1
-    : false;
-  const isAttachWithTop = useMemo(() => {
-    const lastMessage = scrollRef.current?.lastElementChild as HTMLElement;
-    // if scrolllRef is not ready or no message, return false
-    if (!scrollRef?.current || !lastMessage) return false;
-    const topDistance =
-      lastMessage!.getBoundingClientRect().top -
-      scrollRef.current.getBoundingClientRect().top;
-    // leave some space for user question
-    return topDistance < 100;
-  }, [scrollRef?.current?.scrollHeight]);
+  const [hitBottom, setHitBottom] = useState(true);
 
   const isTyping = userInput !== "";
 
@@ -1025,10 +1078,9 @@ function _Chat() {
   // if user is not typing, should auto scroll to bottom only if already at bottom
   const { setAutoScroll, scrollDomToBottom } = useScrollToBottom(
     scrollRef,
-    (isScrolledToBottom || isAttachWithTop) && !isTyping,
+    !isTyping && !hitBottom,
     session.messages,
   );
-  const [hitBottom, setHitBottom] = useState(true);
   const isMobileScreen = useMobileScreen();
   const navigate = useNavigate();
   const [attachImages, setAttachImages] = useState<string[]>([]);
@@ -1041,6 +1093,39 @@ function _Chat() {
   const isGenerating =
     ChatControllerPool.hasPending() ||
     session.messages.some((m) => m.streaming);
+
+  // 控制遮罩层的显示，避免闪烁：延迟显示 250ms
+  const [busyVisible, setBusyVisible] = useState(false);
+  const [busyStartAt, setBusyStartAt] = useState<number | null>(null);
+  const [busyElapsedMs, setBusyElapsedMs] = useState(0);
+  // 计时器
+  useEffect(() => {
+    let timer: any;
+    if (busyVisible) {
+      timer = setInterval(() => {
+        if (busyStartAt) setBusyElapsedMs(Date.now() - busyStartAt);
+      }, 250);
+    } else {
+      setBusyElapsedMs(0);
+    }
+    return () => clearInterval(timer);
+  }, [busyVisible, busyStartAt]);
+  useEffect(() => {
+    let showTimer: any;
+    const MIN_SHOW_MS = 600;
+    if (isGenerating) {
+      if (!busyStartAt) setBusyStartAt(Date.now());
+      showTimer = setTimeout(() => setBusyVisible(true), 250);
+    } else {
+      // 保证最小展示时长，避免闪烁
+      const now = Date.now();
+      const shownFor = busyStartAt ? now - busyStartAt : 0;
+      const remain = Math.max(0, MIN_SHOW_MS - shownFor);
+      setTimeout(() => setBusyVisible(false), remain);
+      setBusyStartAt(null);
+    }
+    return () => clearTimeout(showTimer);
+  }, [isGenerating, busyStartAt]);
   const onSearch = useDebouncedCallback(
     (text: string) => {
       const matchedPrompts = promptStore.search(text);
@@ -1788,6 +1873,7 @@ function _Chat() {
                 inputRef.current?.blur();
                 setAutoScroll(false);
               }}
+              aria-busy={isGenerating}
             >
               {messages
                 // TODO
@@ -1994,6 +2080,16 @@ function _Chat() {
                               parentRef={scrollRef}
                               defaultShow={i >= messages.length - 6}
                             />
+                            {/* 对话结尾的进行中指示符（仅最后一条助手消息） */}
+                            {config.showProgressTail && (
+                              <ProgressTail
+                                active={
+                                  isGenerating &&
+                                  i === messages.length - 1 &&
+                                  !isUser
+                                }
+                              />
+                            )}
                             {getMessageImages(message).length == 1 && (
                               <img
                                 className={styles["chat-message-item-image"]}
@@ -2127,15 +2223,29 @@ function _Chat() {
                 )}
                 <IconButton
                   icon={<SendWhiteIcon />}
-                  text={Locale.Chat.Send}
+                  text={isMobileScreen ? undefined : Locale.Chat.Send}
                   className={styles["chat-input-send"]}
                   type="primary"
                   disabled={isGenerating}
+                  style={
+                    isMobileScreen
+                      ? { width: 44, height: 44, padding: 0, borderRadius: 22 }
+                      : undefined
+                  }
                   onClick={() => {
                     if (!isGenerating) doSubmit(userInput);
                   }}
                 />
               </label>
+              {/* 长耗时遮罩层：仅覆盖输入面板区域 */}
+              {config.showBusyOverlay && (
+                <BusyOverlay
+                  active={busyVisible}
+                  message={"正在生成响应…"}
+                  elapsedMs={busyElapsedMs}
+                  onCancel={() => ChatControllerPool.stopAll()}
+                />
+              )}
             </div>
           </div>
           <div
