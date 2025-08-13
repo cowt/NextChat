@@ -1,3 +1,14 @@
+.fish-reveal {
+  display: inline-block;
+  overflow: hidden;
+  max-width: 1ch;
+  animation: fish-reveal-steps 1.8s steps(6, end) infinite;
+}
+
+@keyframes fish-reveal-steps {
+  0% { max-width: 1ch; }
+  100% { max-width: 6ch; }
+}
 @import "../styles/animation.scss";
 
 .attach-images {
@@ -761,29 +772,14 @@
   background: color-mix(in srgb, #000 12%, transparent);
   display: grid;
   place-items: center;
-  z-index: 20;
+  z-index: 50; /* 高于输入与按钮，拦截交互 */
+  pointer-events: auto; /* 拦截输入与发送按钮点击 */
   backdrop-filter: saturate(120%) blur(1px);
 }
 
-.busy-panel {
-  width: min(90vw, 420px);
-  padding: 20px;
-  border-radius: 12px;
-  background: var(--white);
-  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.25);
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
+/* 移除面板，纯遮罩+鱼动画 */
 
-.busy-spinner {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 3px solid var(--border-in-light);
-  border-top-color: var(--primary);
-  animation: busy-spin 0.9s linear infinite;
-}
+/* 移除旋转指示器 */
 
 @keyframes busy-spin {
   to {
@@ -804,28 +800,50 @@
   color: var(--black);
   text-align: center;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ASCII fish swimming */
-.fish-lane {
-  position: relative;
-  width: 180px;
-  height: 20px;
-  overflow: hidden;
-  margin: 0 auto;
+.fish-track {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
 }
 
 .fish {
   display: inline-block;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   white-space: pre;
-  animation: swim 1.8s ease-in-out infinite;
+  animation: swim-centered-ltr 1.8s linear infinite;
 }
 
-@keyframes swim {
-  0% { transform: translateX(140px); }
-  50% { transform: translateX(0); }
-  100% { transform: translateX(140px); }
+@keyframes swim-centered-ltr {
+  0% { transform: translateX(calc(-1 * var(--fish-range, 70px))); }
+  100% { transform: translateX(var(--fish-range, 70px)); }
+}
+
+.fish-reveal {
+  display: inline-block;
+  overflow: hidden;
+  max-width: 1ch;
+  clip-path: inset(0 0 0 0);
+  animation:
+    fish-reveal-steps 1.8s steps(6, end) infinite,
+    fish-hide-head 1.8s linear infinite;
+}
+
+@keyframes fish-reveal-steps {
+  0% { max-width: 1ch; }
+  60% { max-width: 6ch; }
+  100% { max-width: 6ch; }
+}
+
+@keyframes fish-hide-head {
+  0%, 80% { clip-path: inset(0 0 0 0); }
+  100% { clip-path: inset(0 0 0 1ch); }
 }
 
 .busy-bar {
@@ -835,6 +853,9 @@
   border-radius: 99px;
   overflow: hidden;
 }
+
+/* ensure hidden even if DOM remains */
+.busy-bar { display: none !important; }
 
 .busy-bar.indeterminate::after {
   content: "";

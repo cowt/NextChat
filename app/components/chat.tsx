@@ -964,24 +964,15 @@ function BusyOverlay(props: {
   const ss = String(seconds % 60).padStart(2, "0");
   return (
     <div role="dialog" aria-modal="true" className={styles["busy-overlay"]}>
-      <div className={styles["busy-panel"]}>
-        <div className={styles["busy-spinner"]} aria-hidden />
-        <div className={styles["busy-text"]}>
-          <div className={styles["busy-title"]} aria-live="polite">
-            <div className={styles["fish-lane"]}>
-              <span className={styles["fish"]}>{"><))))>"}</span>
-            </div>
-            {/* （{mm}:{ss}） */}
-          </div>
-          <div className={`${styles["busy-bar"]} ${styles["indeterminate"]}`} />
+      <div className={styles["busy-title"]} aria-live="polite">
+        <div className={styles["fish-track"]}>
+          <span
+            className={styles["fish"]}
+            style={{ "--fish-range": "120px" } as React.CSSProperties}
+          >
+            <span className={styles["fish-reveal"]}>{"><))))>"}</span>
+          </span>
         </div>
-        {props.onCancel && (
-          <IconButton
-            icon={<StopIcon />}
-            // text={Locale.Chat.Actions.Stop}
-            onClick={props.onCancel}
-          />
-        )}
       </div>
     </div>
   );
