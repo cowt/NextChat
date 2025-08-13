@@ -1,14 +1,4 @@
-.fish-reveal {
-  display: inline-block;
-  overflow: hidden;
-  max-width: 1ch;
-  animation: fish-reveal-steps 1.8s steps(6, end) infinite;
-}
-
-@keyframes fish-reveal-steps {
-  0% { max-width: 1ch; }
-  100% { max-width: 6ch; }
-}
+/* removed old fish-reveal max-width animation to avoid overriding the new clip-path version */
 @import "../styles/animation.scss";
 
 .attach-images {
@@ -815,7 +805,7 @@
 
 .fish {
   display: inline-flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   width: var(--fish-box, 7ch); /* 固定盒宽，确保运动路径以盒中心为基准 */
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -832,22 +822,20 @@
 .fish-reveal {
   display: inline-block;
   overflow: hidden;
-  max-width: 1ch;
-  clip-path: inset(0 0 0 0);
-  animation:
-    fish-reveal-steps 2.4s steps(14, end) infinite,
-    fish-hide-head 2.4s linear infinite;
+  width: 7ch;
+  clip-path: inset(0 0 0 85.72%);
+  will-change: clip-path;
+  animation: fish-reveal-sync 2.4s steps(7, end) infinite;
 }
 
-@keyframes fish-reveal-steps {
-  0% { max-width: 1ch; }
-  60% { max-width: 7ch; }
-  100% { max-width: 7ch; }
-}
-
-@keyframes fish-hide-head {
-  0%, 80% { clip-path: inset(0 0 0 0); }
-  100% { clip-path: inset(0 0 0 1ch); }
+@keyframes fish-reveal-sync {
+  /* 左侧出现阶段（与起点同步） */
+  0% { clip-path: inset(0 0 0 85.72%); }
+  20% { clip-path: inset(0 0 0 0%); }
+  /* 中段保持完全显示 */
+  80% { clip-path: inset(0 0 0 0%); }
+  /* 右侧消失阶段（与终点同步） */
+  100% { clip-path: inset(0 85.72% 0 0); }
 }
 
 .busy-bar {

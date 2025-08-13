@@ -971,7 +971,7 @@ function BusyOverlay(props: {
             style={
               {
                 "--fish-range": "180px",
-                "--fish-box": "8ch",
+                "--fish-box": "7ch",
               } as React.CSSProperties
             }
           >
