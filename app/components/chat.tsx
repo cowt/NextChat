@@ -968,7 +968,12 @@ function BusyOverlay(props: {
         <div className={styles["fish-track"]}>
           <span
             className={styles["fish"]}
-            style={{ "--fish-range": "120px" } as React.CSSProperties}
+            style={
+              {
+                "--fish-range": "180px",
+                "--fish-box": "8ch",
+              } as React.CSSProperties
+            }
           >
             <span className={styles["fish-reveal"]}>{"><))))>"}</span>
           </span>
@@ -2077,7 +2082,8 @@ function _Chat() {
                                 active={
                                   isGenerating &&
                                   i === messages.length - 1 &&
-                                  !isUser
+                                  !isUser &&
+                                  getMessageTextContent(message).length > 0
                                 }
                               />
                             )}

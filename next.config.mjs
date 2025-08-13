@@ -8,6 +8,10 @@ console.log("[Next] build with chunk: ", !disableChunk);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  eslint: {
+    // 构建阶段忽略 ESLint（避免第三方插件在 CI/容器内导致构建失败）
+    ignoreDuringBuilds: true,
+  },
   webpack(config) {
     config.module.rules.push({
       test: /\.svg$/,
@@ -22,6 +26,13 @@ const nextConfig = {
 
     config.resolve.fallback = {
       child_process: false,
+    };
+
+    // 忽略 ws 的可选依赖，避免 "Can't resolve 'bufferutil' / 'utf-8-validate'" 报错
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      'utf-8-validate': false,
+      bufferutil: false,
     };
 
     return config;

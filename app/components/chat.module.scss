@@ -814,10 +814,14 @@
 }
 
 .fish {
-  display: inline-block;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: var(--fish-box, 7ch); /* 固定盒宽，确保运动路径以盒中心为基准 */
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   white-space: pre;
-  animation: swim-centered-ltr 1.8s linear infinite;
+  animation: swim-centered-ltr 2.4s linear infinite;
+  will-change: transform;
 }
 
 @keyframes swim-centered-ltr {
@@ -831,14 +835,14 @@
   max-width: 1ch;
   clip-path: inset(0 0 0 0);
   animation:
-    fish-reveal-steps 1.8s steps(6, end) infinite,
-    fish-hide-head 1.8s linear infinite;
+    fish-reveal-steps 2.4s steps(14, end) infinite,
+    fish-hide-head 2.4s linear infinite;
 }
 
 @keyframes fish-reveal-steps {
   0% { max-width: 1ch; }
-  60% { max-width: 6ch; }
-  100% { max-width: 6ch; }
+  60% { max-width: 7ch; }
+  100% { max-width: 7ch; }
 }
 
 @keyframes fish-hide-head {
