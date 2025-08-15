@@ -75,7 +75,7 @@ export const DEFAULT_CONFIG = {
     frequency_penalty: 0,
     sendMemory: true,
     historyMessageCount: 64,
-    compressMessageLengthThreshold: 1000,
+    compressMessageLengthThreshold: 9999999999,
     compressModel: config?.defaultCompressModel ?? "",
     compressProviderName: (config?.defaultCompressProviderName ??
       "") as ServiceProvider,
