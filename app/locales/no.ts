@@ -447,9 +447,10 @@ const no: PartialLocaleType = {
     },
 
     Model: "Modell",
-    CompressModel: {
-      Title: "Komprimeringsmodell",
-      SubTitle: "Modell brukt for å komprimere historikken",
+    SummaryModel: {
+      Title: "Sammendragsmodell",
+      SubTitle:
+        "Uavhengig modell for samtaleoverskrifter og historikkomprimering",
     },
     Temperature: {
       Title: "Tilfeldighet (temperature)",

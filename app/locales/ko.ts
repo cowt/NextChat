@@ -554,9 +554,9 @@ const ko: PartialLocaleType = {
     },
 
     Model: "모델 (model)",
-    CompressModel: {
-      Title: "압축 모델",
-      SubTitle: "기록을 압축하는 데 사용되는 모델",
+    SummaryModel: {
+      Title: "요약 모델",
+      SubTitle: "대화 제목 생성과 기록 압축용 독립 모델",
     },
     Temperature: {
       Title: "무작위성 (temperature)",

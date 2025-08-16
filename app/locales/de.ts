@@ -437,7 +437,8 @@ const de: PartialLocaleType = {
       AI302: {
         ApiKey: {
           Title: "Schnittstellenschlüssel",
-          SubTitle: "Verwenden Sie einen benutzerdefinierten 302.AI API-Schlüssel",
+          SubTitle:
+            "Verwenden Sie einen benutzerdefinierten 302.AI API-Schlüssel",
           Placeholder: "302.AI API-Schlüssel",
         },
         Endpoint: {
@@ -453,9 +454,10 @@ const de: PartialLocaleType = {
     },
 
     Model: "Modell",
-    CompressModel: {
-      Title: "Kompressionsmodell",
-      SubTitle: "Modell zur Komprimierung des Verlaufs",
+    SummaryModel: {
+      Title: "Zusammenfassungsmodell",
+      SubTitle:
+        "Unabhängiges Modell für Gesprächstitel und Geschichtskomprimierung",
     },
     Temperature: {
       Title: "Zufälligkeit (temperature)",

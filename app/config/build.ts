@@ -40,10 +40,9 @@ export const getBuildConfig = () => {
     buildMode,
     isApp,
     template: process.env.DEFAULT_INPUT_TEMPLATE ?? DEFAULT_INPUT_TEMPLATE,
-    // default summarize/compress model for history compression & title generation
-    defaultCompressModel: process.env.DEFAULT_COMPRESS_MODEL ?? "",
-    defaultCompressProviderName:
-      process.env.DEFAULT_COMPRESS_PROVIDER_NAME ?? "",
+    // default summary model for conversation title generation and history compression
+    defaultSummaryModel: process.env.DEFAULT_SUMMARY_MODEL ?? "",
+    defaultSummaryProviderName: process.env.DEFAULT_SUMMARY_PROVIDER_NAME ?? "",
   };
 };
 

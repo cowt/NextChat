@@ -434,9 +434,9 @@ const ar: PartialLocaleType = {
     },
 
     Model: "النموذج",
-    CompressModel: {
-      Title: "نموذج الضغط",
-      SubTitle: "النموذج المستخدم لضغط السجل التاريخي",
+    SummaryModel: {
+      Title: "نموذج الملخص",
+      SubTitle: "نموذج مستقل لعناوين المحادثة وضغط التاريخ",
     },
     Temperature: {
       Title: "العشوائية (temperature)",

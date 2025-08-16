@@ -441,9 +441,9 @@ const vi: PartialLocaleType = {
     },
 
     Model: "Mô hình (model)",
-    CompressModel: {
-      Title: "Mô hình nén",
-      SubTitle: "Mô hình được sử dụng để nén lịch sử",
+    SummaryModel: {
+      Title: "Mô hình tóm tắt",
+      SubTitle: "Mô hình độc lập cho tiêu đề cuộc trò chuyện và nén lịch sử",
     },
     Temperature: {
       Title: "Độ ngẫu nhiên (temperature)",

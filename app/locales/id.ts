@@ -442,9 +442,9 @@ const id: PartialLocaleType = {
     },
 
     Model: "Model",
-    CompressModel: {
-      Title: "Model Kompresi",
-      SubTitle: "Model yang digunakan untuk mengompres riwayat",
+    SummaryModel: {
+      Title: "Model Ringkasan",
+      SubTitle: "Model independen untuk judul percakapan dan kompresi riwayat",
     },
     Temperature: {
       Title: "Randomness (temperature)",

@@ -193,6 +193,13 @@ export function stream(
   let running = false;
   let runTools: any[] = [];
   let responseRes: Response;
+  let retryCount = 0;
+  const maxRetries = Number.isFinite(options?.retryTimes)
+    ? Math.max(0, Number(options?.retryTimes))
+    : 3;
+  const retryDelayMs = Number.isFinite(options?.retryInitialDelayMs)
+    ? Math.max(0, Number(options?.retryInitialDelayMs))
+    : 1000;
 
   // animate response to make it looks smooth
   function animateResponseText() {
@@ -353,6 +360,29 @@ export function stream(
           }
 
           responseText = responseTexts.join("\n\n");
+          // 针对网络/服务端错误增加自动重试（如 Tauri 返回 599、5xx、0、408、429）
+          const shouldRetryStatus =
+            res.status === 0 ||
+            res.status === 408 ||
+            res.status === 429 ||
+            res.status === 599 ||
+            res.status >= 500;
+          if (
+            !controller.signal.aborted &&
+            shouldRetryStatus &&
+            retryCount < maxRetries
+          ) {
+            retryCount += 1;
+            console.warn(
+              `[ChatAPI] bad response (status ${res.status}), retry ${retryCount}/${maxRetries} in ${retryDelayMs}ms...`,
+            );
+            setTimeout(() => {
+              if (!controller.signal.aborted) {
+                chatApi(chatPath, headers, requestPayload, tools);
+              }
+            }, retryDelayMs);
+            return; // 不调用 finish，等待重试
+          }
 
           return finish();
         }
@@ -379,6 +409,20 @@ export function stream(
         finish();
       },
       onerror(e) {
+        // 仅在超过最大重试次数后才上报错误并停止；否则交由 fetchEventSource 按 retry 间隔自动重试
+        if (controller.signal.aborted) {
+          throw e;
+        }
+        const isNetworkError = true; // onerror 基本代表网络层异常/断连
+        if (isNetworkError && retryCount < maxRetries) {
+          retryCount += 1;
+          console.warn(
+            `[ChatAPI] network error, retry ${retryCount}/${maxRetries} in ${retryDelayMs}ms...`,
+            e,
+          );
+          return; // 不抛出即可触发内置重试
+        }
+        // 超过次数，按原行为处理
         options?.onError?.(e);
         throw e;
       },
@@ -419,6 +463,13 @@ export function streamWithThink(
   let isInThinkingMode = false;
   let lastIsThinking = false;
   let lastIsThinkingTagged = false; //between <think> and </think> tags
+  let retryCount = 0;
+  const maxRetries = Number.isFinite(options?.retryTimes)
+    ? Math.max(0, Number(options?.retryTimes))
+    : 3;
+  const retryDelayMs = Number.isFinite(options?.retryInitialDelayMs)
+    ? Math.max(0, Number(options?.retryInitialDelayMs))
+    : 1000;
 
   // animate response to make it looks smooth
   function animateResponseText() {
@@ -579,6 +630,28 @@ export function streamWithThink(
           }
 
           responseText = responseTexts.join("\n\n");
+          const shouldRetryStatus =
+            res.status === 0 ||
+            res.status === 408 ||
+            res.status === 429 ||
+            res.status === 599 ||
+            res.status >= 500;
+          if (
+            !controller.signal.aborted &&
+            shouldRetryStatus &&
+            retryCount < maxRetries
+          ) {
+            retryCount += 1;
+            console.warn(
+              `[ChatAPI] bad response (status ${res.status}), retry ${retryCount}/${maxRetries} in ${retryDelayMs}ms...`,
+            );
+            setTimeout(() => {
+              if (!controller.signal.aborted) {
+                chatApi(chatPath, headers, requestPayload, tools);
+              }
+            }, retryDelayMs);
+            return;
+          }
 
           return finish();
         }
@@ -656,6 +729,18 @@ export function streamWithThink(
         finish();
       },
       onerror(e) {
+        if (controller.signal.aborted) {
+          throw e;
+        }
+        const isNetworkError = true;
+        if (isNetworkError && retryCount < maxRetries) {
+          retryCount += 1;
+          console.warn(
+            `[ChatAPI] network error, retry ${retryCount}/${maxRetries} in ${retryDelayMs}ms...`,
+            e,
+          );
+          return;
+        }
         options?.onError?.(e);
         throw e;
       },

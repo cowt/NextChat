@@ -395,9 +395,9 @@ const sk: PartialLocaleType = {
     },
 
     Model: "Model",
-    CompressModel: {
-      Title: "Kompresný model",
-      SubTitle: "Model používaný na kompresiu histórie",
+    SummaryModel: {
+      Title: "Model súhrnu",
+      SubTitle: "Nezávislý model pre názvy konverzácií a kompresiu histórie",
     },
     Temperature: {
       Title: "Teplota",

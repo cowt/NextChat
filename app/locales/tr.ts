@@ -445,9 +445,9 @@ const tr: PartialLocaleType = {
     },
 
     Model: "Model (model)",
-    CompressModel: {
-      Title: "Sıkıştırma Modeli",
-      SubTitle: "Geçmişi sıkıştırmak için kullanılan model",
+    SummaryModel: {
+      Title: "Özet Modeli",
+      SubTitle: "Konuşma başlıkları ve geçmiş sıkıştırma için bağımsız model",
     },
     Temperature: {
       Title: "Rastgelelik (temperature)",

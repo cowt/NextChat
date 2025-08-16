@@ -119,11 +119,28 @@ function createEmptySession(): ChatSession {
   };
 }
 
-function getSummarizeModel(
-  currentModel: string,
-  providerName: string,
-): string[] {
-  // if it is using gpt-* models, force to use 4o-mini to summarize
+function getSummarizeModel(modelConfig: any): string[] {
+  // 优先使用用户配置的摘要模型
+  if (modelConfig.summaryModel && modelConfig.summaryProviderName) {
+    const configStore = useAppConfig.getState();
+    const accessStore = useAccessStore.getState();
+    const allModel = collectModelsWithDefaultModel(
+      configStore.models,
+      [configStore.customModels, accessStore.customModels].join(","),
+      accessStore.defaultModel,
+    );
+    const summarizeModel = allModel.find(
+      (m) => m.name === modelConfig.summaryModel && m.available,
+    );
+    if (summarizeModel) {
+      return [modelConfig.summaryModel, modelConfig.summaryProviderName];
+    }
+  }
+
+  // 后备逻辑：根据当前模型选择摘要模型
+  const currentModel = modelConfig.model;
+  const providerName = modelConfig.providerName;
+
   if (currentModel.startsWith("gpt") || currentModel.startsWith("chatgpt")) {
     const configStore = useAppConfig.getState();
     const accessStore = useAccessStore.getState();
@@ -670,13 +687,10 @@ export const useChatStore = createPersistStore(
           return;
         }
 
-        // if not config compressModel, then using getSummarizeModel
-        const [model, providerName] = modelConfig.compressModel
-          ? [modelConfig.compressModel, modelConfig.compressProviderName]
-          : getSummarizeModel(
-              session.mask.modelConfig.model,
-              session.mask.modelConfig.providerName,
-            );
+        // 使用独立的摘要模型进行历史压缩
+        const [model, providerName] = getSummarizeModel(
+          session.mask.modelConfig,
+        );
         const api: ClientApi = getClientApi(providerName as ServiceProvider);
 
         // remove error messages if any
@@ -690,6 +704,14 @@ export const useChatStore = createPersistStore(
             countMessages(messages) >= SUMMARIZE_MIN_LEN) ||
           refreshTitle
         ) {
+          // 使用独立的摘要模型生成标题
+          const [titleModel, titleProviderName] = getSummarizeModel(
+            session.mask.modelConfig,
+          );
+          const titleApi: ClientApi = getClientApi(
+            titleProviderName as ServiceProvider,
+          );
+
           const startIndex = Math.max(
             0,
             messages.length - modelConfig.historyMessageCount,
@@ -705,12 +727,12 @@ export const useChatStore = createPersistStore(
                 content: Locale.Store.Prompt.Topic,
               }),
             );
-          api.llm.chat({
+          titleApi.llm.chat({
             messages: topicMessages,
             config: {
-              model,
+              model: titleModel,
               stream: false,
-              providerName,
+              providerName: titleProviderName,
             },
             onFinish(message, responseRes) {
               if (responseRes?.status === 200) {
@@ -911,18 +933,19 @@ export const useChatStore = createPersistStore(
       if (version < 3.2) {
         newState.sessions.forEach((s) => {
           const config = useAppConfig.getState();
-          s.mask.modelConfig.compressModel = config.modelConfig.compressModel;
-          s.mask.modelConfig.compressProviderName =
-            config.modelConfig.compressProviderName;
+          (s.mask.modelConfig as any).summaryModel =
+            config.modelConfig.summaryModel;
+          (s.mask.modelConfig as any).summaryProviderName =
+            config.modelConfig.summaryProviderName;
         });
       }
       // revert default summarize model for every session
       if (version < 3.3) {
         newState.sessions.forEach((s) => {
           const config = useAppConfig.getState();
-          s.mask.modelConfig.compressModel = "";
+          (s.mask.modelConfig as any).summaryModel = "";
           // keep a valid provider value to satisfy typing
-          s.mask.modelConfig.compressProviderName = s.mask.modelConfig
+          (s.mask.modelConfig as any).summaryProviderName = s.mask.modelConfig
             .providerName as ServiceProvider;
         });
       }

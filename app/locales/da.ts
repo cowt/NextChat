@@ -530,9 +530,10 @@ const da: PartialLocaleType = {
       },
     },
     Model: "Model",
-    CompressModel: {
+    SummaryModel: {
       Title: "Opsummeringsmodel",
-      SubTitle: "Bruges til at korte historik ned og lave titel",
+      SubTitle:
+        "Uafhængig model til samtaleoverskrifter og historikkomprimering",
     },
     Temperature: {
       Title: "Temperatur",

@@ -76,9 +76,10 @@ export const DEFAULT_CONFIG = {
     sendMemory: true,
     historyMessageCount: 64,
     compressMessageLengthThreshold: 9999999999,
-    compressModel: config?.defaultCompressModel ?? "",
-    compressProviderName: (config?.defaultCompressProviderName ??
-      "") as ServiceProvider,
+    // 独立的摘要模型配置（用于标题生成和历史压缩）
+    summaryModel: config?.defaultSummaryModel ?? "gpt-4o-mini",
+    summaryProviderName: (config?.defaultSummaryProviderName ??
+      "OpenAI") as ServiceProvider,
     enableInjectSystemPrompts: true,
     template: config?.template,
     size: "1024x1024" as ModelSize,
@@ -198,7 +199,7 @@ export const useAppConfig = createPersistStore(
   }),
   {
     name: StoreKey.Config,
-    version: 4.2,
+    version: 4.3,
 
     merge(persistedState, currentState) {
       const state = persistedState as ChatConfig | undefined;
@@ -251,19 +252,25 @@ export const useAppConfig = createPersistStore(
             : config?.template ?? DEFAULT_INPUT_TEMPLATE;
       }
 
-      if (version < 4.1) {
-        state.modelConfig.compressModel =
-          DEFAULT_CONFIG.modelConfig.compressModel;
-        state.modelConfig.compressProviderName =
-          DEFAULT_CONFIG.modelConfig.compressProviderName;
-      }
-
-      // 4.2: allow env-based defaults to take effect for existing users
-      if (version < 4.2) {
-        state.modelConfig.compressModel =
-          DEFAULT_CONFIG.modelConfig.compressModel;
-        state.modelConfig.compressProviderName = DEFAULT_CONFIG.modelConfig
-          .compressProviderName as ServiceProvider;
+      // 4.3: replace compress model with independent summary model configuration
+      if (version < 4.3) {
+        // 如果之前有压缩模型配置，迁移到摘要模型
+        if ((state.modelConfig as any).compressModel) {
+          state.modelConfig.summaryModel = (
+            state.modelConfig as any
+          ).compressModel;
+          state.modelConfig.summaryProviderName =
+            (state.modelConfig as any).compressProviderName || "OpenAI";
+          // 删除旧的压缩模型配置
+          delete (state.modelConfig as any).compressModel;
+          delete (state.modelConfig as any).compressProviderName;
+        } else {
+          // 否则使用默认值
+          state.modelConfig.summaryModel =
+            DEFAULT_CONFIG.modelConfig.summaryModel;
+          state.modelConfig.summaryProviderName =
+            DEFAULT_CONFIG.modelConfig.summaryProviderName;
+        }
       }
 
       return state as any;

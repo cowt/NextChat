@@ -445,9 +445,9 @@ const ru: PartialLocaleType = {
     },
 
     Model: "Модель",
-    CompressModel: {
-      Title: "Модель сжатия",
-      SubTitle: "Модель, используемая для сжатия истории",
+    SummaryModel: {
+      Title: "Модель резюме",
+      SubTitle: "Независимая модель для заголовков бесед и сжатия истории",
     },
     Temperature: {
       Title: "Случайность (temperature)",

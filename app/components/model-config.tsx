@@ -19,7 +19,7 @@ export function ModelConfigList(props: {
     "provider.providerName",
   );
   const value = `${props.modelConfig.model}@${props.modelConfig?.providerName}`;
-  const compressModelValue = `${props.modelConfig.compressModel}@${props.modelConfig?.compressProviderName}`;
+  const summaryModelValue = `${props.modelConfig.summaryModel}@${props.modelConfig?.summaryProviderName}`;
 
   return (
     <>
@@ -241,21 +241,22 @@ export function ModelConfigList(props: {
           }
         ></input>
       </ListItem>
+
       <ListItem
-        title={Locale.Settings.CompressModel.Title}
-        subTitle={Locale.Settings.CompressModel.SubTitle}
+        title={Locale.Settings.SummaryModel.Title}
+        subTitle={Locale.Settings.SummaryModel.SubTitle}
       >
         <Select
           className={styles["select-compress-model"]}
-          aria-label={Locale.Settings.CompressModel.Title}
-          value={compressModelValue}
+          aria-label={Locale.Settings.SummaryModel.Title}
+          value={summaryModelValue}
           onChange={(e) => {
             const [model, providerName] = getModelProvider(
               e.currentTarget.value,
             );
             props.updateConfig((config) => {
-              config.compressModel = ModalConfigValidator.model(model);
-              config.compressProviderName = providerName as ServiceProvider;
+              config.summaryModel = ModalConfigValidator.model(model);
+              config.summaryProviderName = providerName as ServiceProvider;
             });
           }}
         >

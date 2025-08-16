@@ -455,9 +455,10 @@ const es: PartialLocaleType = {
     },
 
     Model: "Modelo (model)",
-    CompressModel: {
-      Title: "Modelo de compresión",
-      SubTitle: "Modelo utilizado para comprimir el historial",
+    SummaryModel: {
+      Title: "Modelo de resumen",
+      SubTitle:
+        "Modelo independiente para títulos de conversación y compresión de historial",
     },
     Temperature: {
       Title: "Aleatoriedad (temperature)",

@@ -441,9 +441,9 @@ const cs: PartialLocaleType = {
     },
 
     Model: "Model (model)",
-    CompressModel: {
-      Title: "Kompresní model",
-      SubTitle: "Model používaný pro kompresi historie",
+    SummaryModel: {
+      Title: "Model shrnutí",
+      SubTitle: "Nezávislý model pro titulky konverzace a kompresi historie",
     },
     Temperature: {
       Title: "Náhodnost (temperature)",
