@@ -559,6 +559,9 @@ export const useChatStore = createPersistStore(
       async getMessagesWithMemory() {
         const session = get().currentSession();
         const modelConfig = session.mask.modelConfig;
+        // 全局总开关：关闭时不进行任何丢弃/压缩（包括不注入长期记忆、不做 token 裁剪）
+        const globalConfig = useAppConfig.getState().modelConfig;
+        const globalTrimEnabled = !!globalConfig.sendMemory;
         const clearContextIndex = session.clearContextIndex ?? 0;
         const messages = session.messages.slice();
         const totalMessageCount = session.messages.length;
@@ -604,8 +607,9 @@ export const useChatStore = createPersistStore(
           );
         }
         const memoryPrompt = get().getMemoryPrompt();
-        // long term memory
+        // long term memory（受全局开关控制）
         const shouldSendLongTermMemory =
+          globalTrimEnabled &&
           modelConfig.sendMemory &&
           session.memoryPrompt &&
           session.memoryPrompt.length > 0 &&
@@ -631,27 +635,36 @@ export const useChatStore = createPersistStore(
           : shortTermMemoryStartIndex;
         // and if user has cleared history messages, we should exclude the memory too.
         const contextStartIndex = Math.max(clearContextIndex, memoryStartIndex);
-        const maxTokenThreshold = modelConfig.max_tokens;
 
-        // get recent messages as much as possible
-        const reversedRecentMessages = [];
-        for (
-          let i = totalMessageCount - 1, tokenCount = 0;
-          i >= contextStartIndex && tokenCount < maxTokenThreshold;
-          i -= 1
-        ) {
-          const msg = messages[i];
-          if (!msg || msg.isError) continue;
-          tokenCount += estimateTokenLength(getMessageTextContent(msg));
-          reversedRecentMessages.push(msg);
+        let recentMessages: ChatMessage[] = [];
+        if (!globalTrimEnabled) {
+          // 全局关闭：不做 token 裁剪，直接带上从 contextStartIndex 起的所有消息
+          recentMessages = [
+            ...systemPrompts,
+            ...contextPrompts,
+            ...messages.slice(contextStartIndex),
+          ];
+        } else {
+          const maxTokenThreshold = modelConfig.max_tokens;
+          // get recent messages as much as possible (受 token 限制，保留最新)
+          const reversedRecentMessages: ChatMessage[] = [];
+          for (
+            let i = totalMessageCount - 1, tokenCount = 0;
+            i >= contextStartIndex && tokenCount < maxTokenThreshold;
+            i -= 1
+          ) {
+            const msg = messages[i];
+            if (!msg || msg.isError) continue;
+            tokenCount += estimateTokenLength(getMessageTextContent(msg));
+            reversedRecentMessages.push(msg);
+          }
+          recentMessages = [
+            ...systemPrompts,
+            ...longTermMemoryPrompts,
+            ...contextPrompts,
+            ...reversedRecentMessages.reverse(),
+          ];
         }
-        // concat all messages
-        const recentMessages = [
-          ...systemPrompts,
-          ...longTermMemoryPrompts,
-          ...contextPrompts,
-          ...reversedRecentMessages.reverse(),
-        ];
 
         return recentMessages;
       },
@@ -771,16 +784,16 @@ export const useChatStore = createPersistStore(
 
         const lastSummarizeIndex = session.messages.length;
 
-        // 采用“全局配置 vs 会话配置”的最大阈值，确保你在设置页调大的阈值可以立即对所有会话生效
+        // 全局总开关：关闭则不进行任何摘要压缩
+        const summaryEnabled =
+          (globalModelConfig?.sendMemory ?? true) &&
+          (modelConfig?.sendMemory ?? true);
+
+        // 采用“全局配置 vs 会话配置”的最大阈值，确保设置页的更大阈值能兜底
         const effectiveCompressThreshold = Math.max(
           modelConfig?.compressMessageLengthThreshold ?? 0,
           globalModelConfig?.compressMessageLengthThreshold ?? 0,
         );
-
-        // 同时要求全局与会话都开启“发送记忆/允许压缩”时才会触发
-        const effectiveSendMemory =
-          (modelConfig?.sendMemory ?? true) &&
-          (globalModelConfig?.sendMemory ?? true);
 
         console.log(
           "[Chat History] ",
@@ -789,10 +802,7 @@ export const useChatStore = createPersistStore(
           modelConfig.compressMessageLengthThreshold,
         );
 
-        if (
-          historyMsgLength > effectiveCompressThreshold &&
-          effectiveSendMemory
-        ) {
+        if (summaryEnabled && historyMsgLength > effectiveCompressThreshold) {
           /** Destruct max_tokens while summarizing
            * this param is just shit
            **/
