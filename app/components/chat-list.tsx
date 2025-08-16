@@ -1,4 +1,5 @@
 import DeleteIcon from "../icons/delete.svg";
+import LoadingIcon from "../icons/loading.svg";
 
 import styles from "./home.module.scss";
 import {
@@ -19,6 +20,7 @@ import { useRef, useEffect } from "react";
 import { showConfirm } from "./ui-lib";
 import { useMobileScreen } from "../utils";
 import clsx from "clsx";
+import { ChatControllerPool } from "../client/controller";
 
 export function ChatItem(props: {
   onClick?: () => void;
@@ -31,6 +33,7 @@ export function ChatItem(props: {
   index: number;
   narrow?: boolean;
   mask: Mask;
+  loading?: boolean;
 }) {
   const draggableRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -84,6 +87,12 @@ export function ChatItem(props: {
                 <div className={styles["chat-item-date"]}>{props.time}</div>
               </div>
             </>
+          )}
+
+          {props.loading && (
+            <div className={styles["chat-item-loading"]}>
+              <LoadingIcon />
+            </div>
           )}
 
           <div
@@ -140,31 +149,37 @@ export function ChatList(props: { narrow?: boolean }) {
             ref={provided.innerRef}
             {...provided.droppableProps}
           >
-            {sessions.map((item, i) => (
-              <ChatItem
-                title={item.topic}
-                time={new Date(item.lastUpdate).toLocaleString()}
-                count={item.messages.length}
-                key={item.id}
-                id={item.id}
-                index={i}
-                selected={i === selectedIndex}
-                onClick={() => {
-                  navigate(Path.Chat);
-                  selectSession(i);
-                }}
-                onDelete={async () => {
-                  if (
-                    (!props.narrow && !isMobileScreen) ||
-                    (await showConfirm(Locale.Home.DeleteChat))
-                  ) {
-                    chatStore.deleteSession(i);
-                  }
-                }}
-                narrow={props.narrow}
-                mask={item.mask}
-              />
-            ))}
+            {sessions.map((item, i) => {
+              const isGenerating =
+                ChatControllerPool.hasPendingSession(item.id) ||
+                item.messages.some((m) => m.streaming);
+              return (
+                <ChatItem
+                  title={item.topic}
+                  time={new Date(item.lastUpdate).toLocaleString()}
+                  count={item.messages.length}
+                  key={item.id}
+                  id={item.id}
+                  index={i}
+                  selected={i === selectedIndex}
+                  onClick={() => {
+                    navigate(Path.Chat);
+                    selectSession(i);
+                  }}
+                  onDelete={async () => {
+                    if (
+                      (!props.narrow && !isMobileScreen) ||
+                      (await showConfirm(Locale.Home.DeleteChat))
+                    ) {
+                      chatStore.deleteSession(i);
+                    }
+                  }}
+                  narrow={props.narrow}
+                  mask={item.mask}
+                  loading={isGenerating}
+                />
+              );
+            })}
             {provided.placeholder}
           </div>
         )}

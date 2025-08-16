@@ -223,6 +223,31 @@
   opacity: 1;
 }
 
+.chat-item-loading {
+  position: absolute;
+  top: 8px;
+  right: 28px;
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    animation: spin 1s linear infinite;
+    transform-origin: center;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .chat-item-info {
   display: flex;
   justify-content: space-between;
