@@ -682,6 +682,7 @@ export const useChatStore = createPersistStore(
         const config = useAppConfig.getState();
         const session = targetSession;
         const modelConfig = session.mask.modelConfig;
+        const globalModelConfig = config.modelConfig;
         // skip summarize when using dalle3?
         if (isDalle3(modelConfig.model)) {
           return;
@@ -770,6 +771,17 @@ export const useChatStore = createPersistStore(
 
         const lastSummarizeIndex = session.messages.length;
 
+        // 采用“全局配置 vs 会话配置”的最大阈值，确保你在设置页调大的阈值可以立即对所有会话生效
+        const effectiveCompressThreshold = Math.max(
+          modelConfig?.compressMessageLengthThreshold ?? 0,
+          globalModelConfig?.compressMessageLengthThreshold ?? 0,
+        );
+
+        // 同时要求全局与会话都开启“发送记忆/允许压缩”时才会触发
+        const effectiveSendMemory =
+          (modelConfig?.sendMemory ?? true) &&
+          (globalModelConfig?.sendMemory ?? true);
+
         console.log(
           "[Chat History] ",
           toBeSummarizedMsgs,
@@ -778,8 +790,8 @@ export const useChatStore = createPersistStore(
         );
 
         if (
-          historyMsgLength > modelConfig.compressMessageLengthThreshold &&
-          modelConfig.sendMemory
+          historyMsgLength > effectiveCompressThreshold &&
+          effectiveSendMemory
         ) {
           /** Destruct max_tokens while summarizing
            * this param is just shit
