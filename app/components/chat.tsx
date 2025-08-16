@@ -539,9 +539,9 @@ export function ChatActions(props: {
     config.update((config) => (config.theme = nextTheme));
   }
 
-  // stop all responses
-  const couldStop = ChatControllerPool.hasPending();
-  const stopAll = () => ChatControllerPool.stopAll();
+  // stop responses only for current session
+  const couldStop = ChatControllerPool.hasPendingSession(session.id);
+  const stopAll = () => ChatControllerPool.stopSession(session.id);
 
   // switch model
   const currentModel = session.mask.modelConfig.model;
@@ -1087,7 +1087,7 @@ function _Chat() {
   const [promptHints, setPromptHints] = useState<RenderPrompt[]>([]);
   // 请求未返回（生成中）时，禁用发送
   const isGenerating =
-    ChatControllerPool.hasPending() ||
+    ChatControllerPool.hasPendingSession(session.id) ||
     session.messages.some((m) => m.streaming);
 
   // 控制遮罩层的显示，避免闪烁：延迟显示 250ms
@@ -2240,7 +2240,7 @@ function _Chat() {
                   active={busyVisible}
                   message={"正在生成响应…"}
                   elapsedMs={busyElapsedMs}
-                  onCancel={() => ChatControllerPool.stopAll()}
+                  onCancel={() => ChatControllerPool.stopSession(session.id)}
                 />
               )}
             </div>
