@@ -453,22 +453,20 @@ export function Markdown(
   useEffect(() => {
     if (!mdRef.current || !props.onImageClick) return;
 
-    const images = Array.from(mdRef.current.querySelectorAll("img"));
-    const imageSrcs = images.map((img) => img.src).filter(Boolean);
+    const allImgNodes = Array.from(
+      mdRef.current.querySelectorAll<HTMLImageElement>("img"),
+    );
+
+    // 仅对未被 <a> 包裹的图片启用预览，避免与跳转/外链冲突
+    const boundImages = allImgNodes.filter((img) => !img.closest("a"));
+    const imageSrcs = boundImages.map((img) => img.src).filter(Boolean);
     setAllImages(imageSrcs);
 
-    // 为每个图片添加点击事件
-    images.forEach((img, index) => {
-      const handleClick = (e: Event) => {
-        // 检查是否在链接内
-        let target = e.target as HTMLElement;
-        while (target && target !== img) {
-          if (target.tagName === "A") {
-            return; // 如果在链接内，不处理
-          }
-          target = target.parentElement as HTMLElement;
-        }
+    const cleanups: Array<() => void> = [];
 
+    // 为每个可预览图片添加点击事件
+    boundImages.forEach((img, index) => {
+      const handleClick = (e: Event) => {
         e.preventDefault();
         e.stopPropagation();
         props.onImageClick!(imageSrcs, index);
@@ -476,12 +474,13 @@ export function Markdown(
 
       img.style.cursor = "pointer";
       img.addEventListener("click", handleClick);
-
-      // 清理函数会在下次effect运行或组件卸载时调用
-      return () => {
-        img.removeEventListener("click", handleClick);
-      };
+      cleanups.push(() => img.removeEventListener("click", handleClick));
     });
+
+    // 统一清理，防止重复绑定
+    return () => {
+      cleanups.forEach((fn) => fn());
+    };
   }, [props.content, props.onImageClick]);
 
   return (

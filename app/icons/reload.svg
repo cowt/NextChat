@@ -1,2 +1,11 @@
-<?xml version="1.0" ?><!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
-<svg fill="#000000" width="800px" height="800px" viewBox="0 0 512 512" data-name="Layer 1" id="Layer_1" xmlns="http://www.w3.org/2000/svg"><path d="M64,256H34A222,222,0,0,1,430,118.15V85h30V190H355V160h67.27A192.21,192.21,0,0,0,256,64C150.13,64,64,150.13,64,256Zm384,0c0,105.87-86.13,192-192,192A192.21,192.21,0,0,1,89.73,352H157V322H52V427H82V393.85A222,222,0,0,0,478,256Z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <defs>
+    <marker id="arrow" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L4,2 L0,4 Z" fill="currentColor" />
+    </marker>
+  </defs>
+  <!-- 上半圈 → 右下箭头 -->
+  <path d="M9.6 2.8A5.5 5.5 0 0 1 13.2 7.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
+  <!-- 下半圈 → 左上箭头 -->
+  <path d="M6.4 13.2A5.5 5.5 0 0 1 2.8 8.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
+</svg>
