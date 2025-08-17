@@ -96,6 +96,11 @@ declare global {
       DEFAULT_INPUT_TEMPLATE?: string;
 
       ENABLE_MCP?: string; // enable mcp functionality
+      ANNOUNCEMENT_ID?: string; // unique id to allow client-side dismiss persistence
+      ANNOUNCEMENT?: string; // text content, markdown allowed
+      ANNOUNCEMENT_URL?: string; // optional link
+      ANNOUNCEMENT_LEVEL?: "info" | "warning" | "danger"; // optional visual level
+      ANNOUNCEMENT_EXPIRES_AT?: string; // ISO timestamp, optional
     }
   }
 }
@@ -274,5 +279,18 @@ export const getServerSideConfig = () => {
     visionModels,
     allowedWebDavEndpoints,
     enableMcp: process.env.ENABLE_MCP === "true",
+    // server-driven announcement
+    announcement: process.env.ANNOUNCEMENT
+      ? {
+          id: process.env.ANNOUNCEMENT_ID || "default",
+          content: process.env.ANNOUNCEMENT,
+          url: process.env.ANNOUNCEMENT_URL || "",
+          level: (process.env.ANNOUNCEMENT_LEVEL || "info") as
+            | "info"
+            | "warning"
+            | "danger",
+          expiresAt: process.env.ANNOUNCEMENT_EXPIRES_AT || "",
+        }
+      : null,
   };
 };

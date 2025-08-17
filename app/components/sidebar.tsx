@@ -12,10 +12,11 @@ import MaskIcon from "../icons/mask.svg";
 import McpIcon from "../icons/mcp.svg";
 import DragIcon from "../icons/drag.svg";
 import DiscoveryIcon from "../icons/discovery.svg";
+import FireIcon from "../icons/fire.svg";
 
 import Locale from "../locales";
 
-import { useAppConfig, useChatStore } from "../store";
+import { useAppConfig, useChatStore, useAccessStore } from "../store";
 
 import {
   DEFAULT_SIDEBAR_WIDTH,
@@ -29,7 +30,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { isIOS, useMobileScreen } from "../utils";
 import dynamic from "next/dynamic";
-import { Selector, showConfirm } from "./ui-lib";
+import { Selector, showConfirm, showToast } from "./ui-lib";
 import clsx from "clsx";
 import { isMcpEnabled } from "../mcp/actions";
 
@@ -232,6 +233,38 @@ export function SideBar(props: { className?: string }) {
   const config = useAppConfig();
   const chatStore = useChatStore();
   const [mcpEnabled, setMcpEnabled] = useState(false);
+  const accessStore = useAccessStore();
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const announcement = useAccessStore((s) => s.announcement);
+
+  useEffect(() => {
+    try {
+      const id = announcement?.id || null;
+      const dismissedId = localStorage.getItem("announcement:dismissed:id");
+      setDismissed(dismissedId);
+      if (id && announcement?.expiresAt) {
+        const exp = Date.parse(announcement.expiresAt);
+        if (!isNaN(exp) && Date.now() > exp) {
+          accessStore.clearAnnouncement(id);
+        }
+      }
+    } catch (e) {
+      // ignore storage errors
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [announcement?.id, announcement?.expiresAt]);
+
+  const handleDismiss = () => {
+    try {
+      if (announcement?.id) {
+        localStorage.setItem("announcement:dismissed:id", announcement.id);
+        setDismissed(announcement.id);
+        accessStore.clearAnnouncement?.(announcement.id);
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     // 检查 MCP 是否启用
@@ -255,6 +288,62 @@ export function SideBar(props: { className?: string }) {
         logo={<ChatGptIcon />}
         shouldNarrow={shouldNarrow}
       >
+        {announcement && announcement.id !== dismissed && (
+          <div
+            className={styles["sidebar-header-bar"]}
+            style={{ marginBottom: 0 }}
+          >
+            {shouldNarrow ? (
+              <div
+                className={styles["announcement-icon"]}
+                title={announcement.content}
+                onClick={() => {
+                  if (announcement.url) {
+                    window.open(
+                      announcement.url,
+                      "_blank",
+                      "noopener,noreferrer",
+                    );
+                  } else {
+                    showToast(announcement.content);
+                  }
+                }}
+              >
+                <FireIcon />
+              </div>
+            ) : (
+              <div
+                className={clsx(
+                  styles["announcement"],
+                  styles[`announcement-${announcement.level || "info"}`],
+                )}
+              >
+                <div className={styles["announcement-main"]}>
+                  <div className={styles["announcement-content"]}>
+                    <div className={styles["announcement-marquee"]}>
+                      <span className={styles["announcement-marquee-inner"]}>
+                        {announcement.content}
+                      </span>
+                    </div>
+                  </div>
+                  {announcement.url ? (
+                    <a
+                      className={styles["announcement-cta"]}
+                      href={announcement.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      查看详情
+                    </a>
+                  ) : null}
+                </div>
+                <div className={styles["announcement-close"]}>
+                  <IconButton onClick={handleDismiss} icon={<DeleteIcon />} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className={styles["sidebar-header-bar"]}>
           <IconButton
             icon={<MaskIcon />}
@@ -345,6 +434,26 @@ export function SideBar(props: { className?: string }) {
                 />
               </a>
             </div>
+            {announcement && (
+              <div className={styles["sidebar-action"]}>
+                <IconButton
+                  icon={<FireIcon />}
+                  text={undefined}
+                  onClick={() => {
+                    if (announcement.url) {
+                      window.open(
+                        announcement.url,
+                        "_blank",
+                        "noopener,noreferrer",
+                      );
+                    } else if (announcement.content) {
+                      showToast(announcement.content);
+                    }
+                  }}
+                  shadow
+                />
+              </div>
+            )}
           </>
         }
         secondaryAction={

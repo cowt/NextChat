@@ -151,12 +151,31 @@ const DEFAULT_ACCESS_STATE = {
 
   // tts config
   edgeTTSVoiceName: "zh-CN-YunxiNeural",
+
+  // server-driven announcement
+  announcement: null as null | {
+    id: string;
+    content: string;
+    url?: string;
+    level?: "info" | "warning" | "danger";
+    expiresAt?: string;
+  },
 };
 
 export const useAccessStore = createPersistStore(
   { ...DEFAULT_ACCESS_STATE },
 
   (set, get) => ({
+    getAnnouncement() {
+      this.fetch();
+      return get().announcement;
+    },
+    clearAnnouncement(id?: string) {
+      const current = get().announcement;
+      if (!current) return;
+      if (id && current.id !== id) return;
+      set(() => ({ announcement: null }) as any);
+    },
     enabledAccessControl() {
       this.fetch();
 
@@ -270,9 +289,9 @@ export const useAccessStore = createPersistStore(
 
           return res;
         })
-        .then((res: DangerConfig) => {
+        .then((res: DangerConfig & { announcement?: any }) => {
           console.log("[Config] got config from server", res);
-          set(() => ({ ...res }));
+          set(() => ({ ...res }) as any);
         })
         .catch(() => {
           console.error("[Config] failed to fetch config");
@@ -285,6 +304,15 @@ export const useAccessStore = createPersistStore(
   {
     name: StoreKey.Access,
     version: 2,
+    onRehydrateStorage: (state: any) => {
+      return () => {
+        try {
+          state?.fetch?.();
+        } catch (e) {
+          // ignore
+        }
+      };
+    },
     migrate(persistedState, version) {
       if (version < 2) {
         const state = persistedState as {
