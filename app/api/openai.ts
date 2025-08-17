@@ -71,8 +71,8 @@ export async function handle(
     }
 
     return response;
-  } catch (e) {
-    console.error("[OpenAI] ", e);
+  } catch (e: any) {
+    console.error("[OpenAI]", e?.name ?? "Error", e?.message ?? String(e));
     return NextResponse.json(prettyObject(e));
   }
 }

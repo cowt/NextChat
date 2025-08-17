@@ -345,7 +345,7 @@ export function stream(
           res.status !== 200
         ) {
           const responseTexts = [responseText];
-          let extraInfo = await res.clone().text();
+          let extraInfo = prettyObject(await res.clone().text());
           try {
             const resJson = await res.clone().json();
             extraInfo = prettyObject(resJson);
@@ -615,7 +615,7 @@ export function streamWithThink(
           res.status !== 200
         ) {
           const responseTexts = [responseText];
-          let extraInfo = await res.clone().text();
+          let extraInfo = prettyObject(await res.clone().text());
           try {
             const resJson = await res.clone().json();
             extraInfo = prettyObject(resJson);

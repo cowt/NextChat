@@ -76,6 +76,7 @@ export function PreCode(props: { children: any }) {
   const previewRef = useRef<HTMLPreviewHandler>(null);
   const [mermaidCode, setMermaidCode] = useState("");
   const [htmlCode, setHtmlCode] = useState("");
+  const [foldCollapsed, setFoldCollapsed] = useState(true);
   const { height } = useWindowSize();
   const chatStore = useChatStore();
   const session = chatStore.currentSession();
@@ -129,6 +130,90 @@ export function PreCode(props: { children: any }) {
       setTimeout(renderArtifacts, 1);
     }
   }, []);
+
+  // If this is a special fold block (from ```` fenced), render a wrapper where
+  // the summary is at the top level, and the <pre> sits inside the wrapper.
+  const child: any = (props as any).children;
+  const childClassName = (() => {
+    try {
+      // Try multiple ways to get the className
+      if (React.isValidElement(child)) {
+        return (child as any)?.props?.className as string | undefined;
+      }
+      // If children is an array, check the first element
+      if (
+        Array.isArray(child) &&
+        child.length > 0 &&
+        React.isValidElement(child[0])
+      ) {
+        return (child[0] as any)?.props?.className as string | undefined;
+      }
+      return undefined;
+    } catch (e) {
+      return undefined;
+    }
+  })();
+  const isFold =
+    (React.isValidElement(child) ||
+      (Array.isArray(child) && child.length > 0)) &&
+    typeof childClassName === "string" &&
+    /language-fold/.test(childClassName);
+
+  console.log(
+    `[DEBUG] PreCode: child=`,
+    child,
+    `childClassName="${childClassName}", isFold=${isFold}`,
+  );
+
+  if (isFold) {
+    // Extract the raw text content from the code element
+    const getRawContent = () => {
+      try {
+        if (Array.isArray(child) && child.length > 0) {
+          const codeElement = child[0];
+          if (React.isValidElement(codeElement)) {
+            return String((codeElement as any)?.props?.children ?? "");
+          }
+        }
+        return "";
+      } catch (e) {
+        return "";
+      }
+    };
+
+    return (
+      <div className="fold-wrap">
+        <div
+          className="fold-summary"
+          onClick={() => {
+            setFoldCollapsed((v) => !v);
+            // Auto-scroll to the fold content area when expanding
+            if (foldCollapsed) {
+              setTimeout(() => {
+                const foldContent = document.querySelector(".fold-content");
+                if (foldContent) {
+                  foldContent.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                    inline: "nearest",
+                  });
+                }
+              }, 100);
+            }
+          }}
+          role="button"
+          aria-expanded={!foldCollapsed}
+        >
+          {foldCollapsed ? "点击展开" : "点击收起"}
+        </div>
+        {!foldCollapsed && (
+          <div className="fold-content">
+            <MarkdownContent content={getRawContent()} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -184,6 +269,9 @@ function CustomCode(props: { children: any; className?: string }) {
   const [collapsed, setCollapsed] = useState(true);
   const [showToggle, setShowToggle] = useState(false);
 
+  const languageClass = props?.className?.match(/language-([\w-]+)/);
+  const languageName = languageClass ? languageClass[1] : "";
+
   useEffect(() => {
     if (ref.current) {
       const codeHeight = ref.current.scrollHeight;
@@ -213,7 +301,7 @@ function CustomCode(props: { children: any; className?: string }) {
   return (
     <>
       <code
-        className={clsx(props?.className)}
+        className={clsx(languageName ? `language-${languageName}` : undefined)}
         ref={ref}
         style={{
           maxHeight: enableCodeFold && collapsed ? "400px" : "none",
@@ -267,9 +355,28 @@ function tryWrapHtmlCode(text: string) {
     );
 }
 
+// Convert 4-backtick fenced blocks to a special fold fence that we can render collapsible.
+function convertFourBackticksToFold(text: string) {
+  return text.replace(
+    /````([^\r\n]*)?[\r\n]([\s\S]*?)[\r\n]````/g,
+    (match, info, body) => {
+      const rawInfo = (info ?? "").trim();
+      const firstToken = rawInfo.split(/[\t\s]+/)[0] ?? "";
+      const langFromInfo = firstToken.length > 0 ? firstToken : rawInfo;
+      const foldLang =
+        langFromInfo.length > 0 ? `fold-${langFromInfo}` : "fold";
+      console.log(
+        `[DEBUG] Converting 4-backtick block: info="${rawInfo}", foldLang="${foldLang}"`,
+      );
+      return `\n\n\`\`\`${foldLang}\n${body}\n\`\`\`\n\n`;
+    },
+  );
+}
+
 function _MarkDownContent(props: { content: string }) {
   const escapedContent = useMemo(() => {
-    return tryWrapHtmlCode(escapeBrackets(props.content));
+    const withFold = convertFourBackticksToFold(props.content);
+    return tryWrapHtmlCode(escapeBrackets(withFold));
   }, [props.content]);
 
   return (

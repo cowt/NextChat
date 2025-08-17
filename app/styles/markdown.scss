@@ -862,6 +862,67 @@
   border: 0;
 }
 
+// wrapper for the entire fold block (```` fenced)
+.markdown-body .fold-wrap {
+  margin: 16px 0 24px 0;
+  padding: 8px;
+  background: var(--color-canvas-subtle);
+  border-radius: 12px;
+}
+
+// summary bar for forced fold code blocks (```` fenced)
+.markdown-body .fold-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 0 0;
+  padding: 10px 12px;
+  background: var(--color-canvas-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: var(--color-fg-muted);
+  position: relative;
+}
+
+.markdown-body .fold-summary[aria-expanded="true"] {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.markdown-body .fold-summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 12px;
+  color: var(--color-fg-muted);
+  transform-origin: center;
+}
+
+.markdown-body .fold-summary[aria-expanded="true"]::before {
+  content: "▾";
+}
+
+.markdown-body .fold-summary:hover {
+  background: color-mix(in srgb, var(--color-canvas-subtle) 80%, transparent);
+}
+
+.markdown-body .fold-content {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding: 16px 20px;
+  background: rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top: none;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
 .markdown-body .csv-data td,
 .markdown-body .csv-data th {
   padding: 5px;

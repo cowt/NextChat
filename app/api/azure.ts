@@ -25,8 +25,8 @@ export async function handle(
 
   try {
     return await requestOpenai(req);
-  } catch (e) {
-    console.error("[Azure] ", e);
+  } catch (e: any) {
+    console.error("[Azure]", e?.name ?? "Error", e?.message ?? String(e));
     return NextResponse.json(prettyObject(e));
   }
 }

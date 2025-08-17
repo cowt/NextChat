@@ -32,8 +32,8 @@ export async function handle(
   try {
     const response = await request(req);
     return response;
-  } catch (e) {
-    console.error("[DeepSeek] ", e);
+  } catch (e: any) {
+    console.error("[DeepSeek]", e?.name ?? "Error", e?.message ?? String(e));
     return NextResponse.json(prettyObject(e));
   }
 }
