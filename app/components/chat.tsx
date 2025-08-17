@@ -34,6 +34,7 @@ import ConfirmIcon from "../icons/confirm.svg";
 import CloseIcon from "../icons/close.svg";
 import CancelIcon from "../icons/cancel.svg";
 import ImageIcon from "../icons/image.svg";
+import { ImageViewer, useImageViewer } from "./image-viewer";
 
 import LightIcon from "../icons/light.svg";
 import DarkIcon from "../icons/dark.svg";
@@ -1082,6 +1083,28 @@ function _Chat() {
   const [attachImages, setAttachImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
 
+  // 图片查看器
+  const imageViewer = useImageViewer();
+
+  // 处理图片点击事件，避免与超链接冲突
+  const handleImageClick = useCallback(
+    (e: React.MouseEvent, images: string[], index: number) => {
+      // 检查是否点击的是链接内的图片
+      let target = e.target as HTMLElement;
+      while (target && target !== e.currentTarget) {
+        if (target.tagName === "A") {
+          return; // 如果图片在链接内，不处理点击事件
+        }
+        target = target.parentElement as HTMLElement;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+      imageViewer.showImageViewer(images, index);
+    },
+    [imageViewer],
+  );
+
   // prompt hints
   const promptStore = usePromptStore();
   const [promptHints, setPromptHints] = useState<RenderPrompt[]>([]);
@@ -2075,6 +2098,9 @@ function _Chat() {
                               fontFamily={fontFamily}
                               parentRef={scrollRef}
                               defaultShow={i >= messages.length - 6}
+                              onImageClick={(images, index) => {
+                                imageViewer.showImageViewer(images, index);
+                              }}
                             />
                             {/* 对话结尾的进行中指示符（仅最后一条助手消息） */}
                             {config.showProgressTail && (
@@ -2092,6 +2118,14 @@ function _Chat() {
                                 className={styles["chat-message-item-image"]}
                                 src={getMessageImages(message)[0]}
                                 alt=""
+                                onClick={(e) =>
+                                  handleImageClick(
+                                    e,
+                                    getMessageImages(message),
+                                    0,
+                                  )
+                                }
+                                style={{ cursor: "pointer" }}
                               />
                             )}
                             {getMessageImages(message).length > 1 && (
@@ -2116,6 +2150,14 @@ function _Chat() {
                                         key={index}
                                         src={image}
                                         alt=""
+                                        onClick={(e) =>
+                                          handleImageClick(
+                                            e,
+                                            getMessageImages(message),
+                                            index,
+                                          )
+                                        }
+                                        style={{ cursor: "pointer" }}
                                       />
                                     );
                                   },
@@ -2279,6 +2321,13 @@ function _Chat() {
       {showShortcutKeyModal && (
         <ShortcutKeyModal onClose={() => setShowShortcutKeyModal(false)} />
       )}
+
+      <ImageViewer
+        images={imageViewer.images}
+        initialIndex={imageViewer.initialIndex}
+        visible={imageViewer.isVisible}
+        onClose={imageViewer.hideImageViewer}
+      />
     </>
   );
 }

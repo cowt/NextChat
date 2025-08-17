@@ -585,6 +585,9 @@ export function ImagePreviewer(props: {
                     src={getMessageImages(m)[0]}
                     alt="message"
                     className={styles["message-image"]}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
                   />
                 )}
                 {getMessageImages(m).length > 1 && (
@@ -602,6 +605,9 @@ export function ImagePreviewer(props: {
                         src={src}
                         alt="message"
                         className={styles["message-image-multi"]}
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
                       />
                     ))}
                   </div>

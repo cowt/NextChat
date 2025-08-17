@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import ReactMarkdown from "react-markdown";
 import "katex/dist/katex.min.css";
 import RemarkMath from "remark-math";
@@ -395,6 +396,15 @@ function _MarkDownContent(props: { content: string }) {
       components={{
         pre: PreCode,
         code: CustomCode,
+        img: (imgProps) => (
+          // 优化图片加载：懒加载、异步解码、避免 referrer 引起的 302/签名失效
+          <img
+            {...imgProps}
+            loading={imgProps.loading ?? "lazy"}
+            decoding={imgProps.decoding ?? "async"}
+            referrerPolicy={imgProps.referrerPolicy ?? "no-referrer"}
+          />
+        ),
         p: (pProps) => <p {...pProps} dir="auto" />,
         a: (aProps) => {
           const href = aProps.href || "";
@@ -433,9 +443,46 @@ export function Markdown(
     fontFamily?: string;
     parentRef?: RefObject<HTMLDivElement>;
     defaultShow?: boolean;
+    onImageClick?: (images: string[], index: number) => void;
   } & React.DOMAttributes<HTMLDivElement>,
 ) {
   const mdRef = useRef<HTMLDivElement>(null);
+  const [allImages, setAllImages] = useState<string[]>([]);
+
+  // 收集并设置图片点击事件
+  useEffect(() => {
+    if (!mdRef.current || !props.onImageClick) return;
+
+    const images = Array.from(mdRef.current.querySelectorAll("img"));
+    const imageSrcs = images.map((img) => img.src).filter(Boolean);
+    setAllImages(imageSrcs);
+
+    // 为每个图片添加点击事件
+    images.forEach((img, index) => {
+      const handleClick = (e: Event) => {
+        // 检查是否在链接内
+        let target = e.target as HTMLElement;
+        while (target && target !== img) {
+          if (target.tagName === "A") {
+            return; // 如果在链接内，不处理
+          }
+          target = target.parentElement as HTMLElement;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        props.onImageClick!(imageSrcs, index);
+      };
+
+      img.style.cursor = "pointer";
+      img.addEventListener("click", handleClick);
+
+      // 清理函数会在下次effect运行或组件卸载时调用
+      return () => {
+        img.removeEventListener("click", handleClick);
+      };
+    });
+  }, [props.content, props.onImageClick]);
 
   return (
     <div

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <defs>
+    <marker id="arrow" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L4,2 L0,4 Z" fill="currentColor" />
+    </marker>
+  </defs>
+  <!-- 上半圈 → 右下箭头 -->
+  <path d="M9.6 2.8A5.5 5.5 0 0 1 13.2 7.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
+  <!-- 下半圈 → 左上箭头 -->
+  <path d="M6.4 13.2A5.5 5.5 0 0 1 2.8 8.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
+</svg>
