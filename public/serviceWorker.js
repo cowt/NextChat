@@ -50,6 +50,29 @@ async function remove(request, url) {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
+  // File cache API - handle first to ensure /api/cache/* GET returns from FILE_CACHE
+  try {
+    if (/^\/api\/cache/.test(url.pathname)) {
+      if ('GET' == e.request.method) {
+        e.respondWith((async () => {
+          const cache = await caches.open(CHATGPT_NEXT_WEB_FILE_CACHE);
+          const cached = await cache.match(e.request);
+          if (cached) return cached;
+          return jsonify({ code: -1, msg: '此文件未在 ServiceWorker 缓存中找到' });
+        })());
+        return;
+      }
+      if ('POST' == e.request.method) {
+        e.respondWith(upload(e.request, url))
+        return;
+      }
+      if ('DELETE' == e.request.method) {
+        e.respondWith(remove(e.request, url))
+        return;
+      }
+    }
+  } catch (_) {}
+
   // Image cache: Cache First + background revalidate
   // Only handle GET requests for images; skip data/object/chrome-extension URLs
   try {
@@ -95,20 +118,4 @@ self.addEventListener("fetch", (e) => {
       return;
     }
   } catch (_) {}
-
-  // File cache API
-  if (/^\/api\/cache/.test(url.pathname)) {
-    if ('GET' == e.request.method) {
-      e.respondWith(caches.match(e.request))
-      return;
-    }
-    if ('POST' == e.request.method) {
-      e.respondWith(upload(e.request, url))
-      return;
-    }
-    if ('DELETE' == e.request.method) {
-      e.respondWith(remove(e.request, url))
-      return;
-    }
-  }
 });
