@@ -57,6 +57,8 @@ export const DEFAULT_CONFIG = {
 
   enableCodeFold: true, // code fold config
 
+  foldXmlTags: ["think", "tools", "plan"],
+
   disablePromptHint: false,
 
   dontShowMaskSplashScreen: true, // dont show splash screen when create chat

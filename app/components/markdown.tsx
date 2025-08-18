@@ -25,6 +25,10 @@ import { IconButton } from "./button";
 
 import { useAppConfig } from "../store/config";
 import clsx from "clsx";
+import FoldableContent from "./foldable-content";
+
+// placeholder for nested triple backticks inside fold bodies
+const BACKTICK_PLACEHOLDER = "__BACKTICK_TRIPLE_PLACEHOLDER__";
 
 export function Mermaid(props: { code: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -173,7 +177,8 @@ export function PreCode(props: { children: any }) {
         if (Array.isArray(child) && child.length > 0) {
           const codeElement = child[0];
           if (React.isValidElement(codeElement)) {
-            return String((codeElement as any)?.props?.children ?? "");
+            const raw = String((codeElement as any)?.props?.children ?? "");
+            return raw.replaceAll(BACKTICK_PLACEHOLDER, "```");
           }
         }
         return "";
@@ -183,36 +188,13 @@ export function PreCode(props: { children: any }) {
     };
 
     return (
-      <div className="fold-wrap">
-        <div
-          className="fold-summary"
-          onClick={() => {
-            setFoldCollapsed((v) => !v);
-            // Auto-scroll to the fold content area when expanding
-            if (foldCollapsed) {
-              setTimeout(() => {
-                const foldContent = document.querySelector(".fold-content");
-                if (foldContent) {
-                  foldContent.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                    inline: "nearest",
-                  });
-                }
-              }, 100);
-            }
-          }}
-          role="button"
-          aria-expanded={!foldCollapsed}
-        >
-          {foldCollapsed ? "点击展开" : "点击收起"}
-        </div>
-        {!foldCollapsed && (
-          <div className="fold-content">
-            <MarkdownContent content={getRawContent()} />
-          </div>
-        )}
-      </div>
+      <FoldableContent
+        defaultCollapsed={foldCollapsed}
+        previewText={getRawContent()}
+        showTypingPreview
+      >
+        <MarkdownContent content={getRawContent()} allowXmlFold={false} />
+      </FoldableContent>
     );
   }
 
@@ -369,16 +351,125 @@ function convertFourBackticksToFold(text: string) {
       console.log(
         `[DEBUG] Converting 4-backtick block: info="${rawInfo}", foldLang="${foldLang}"`,
       );
-      return `\n\n\`\`\`${foldLang}\n${body}\n\`\`\`\n\n`;
+      // Encode inner triple backticks to avoid prematurely closing the fence.
+      const safeBody = String(body).replaceAll("```", BACKTICK_PLACEHOLDER);
+      return `\n\n\`\`\`${foldLang}\n${safeBody}\n\`\`\`\n\n`;
     },
   );
 }
 
-function _MarkDownContent(props: { content: string }) {
+// Convert configured XML-like tags to a special fold fence
+function convertXmlTagsToFold(text: string, tags: string[]) {
+  let result = text;
+  for (const tag of tags || []) {
+    // 支持大小写、可选属性、以及标签内外的任意空白
+    const re = new RegExp(`<${tag}[^>]*>\\s*([\\s\\S]*?)\\s*<\\/${tag}>`, "gi");
+    result = result.replace(re, (m, body) => {
+      const safeBody = String(body).replaceAll("```", BACKTICK_PLACEHOLDER);
+      return `\n\n\`\`\`fold-${tag}\n${safeBody}\n\`\`\`\n\n`;
+    });
+  }
+  return result;
+}
+
+// 当出现左标签而未闭合时，也先包一层折叠，直到文本末尾
+function convertLeftTagOpenToFold(text: string, tags: string[]) {
+  let result = text;
+  for (const tag of tags || []) {
+    const open = new RegExp(`<${tag}[^>]*>`, "i");
+    const close = new RegExp(`</${tag}>`, "i");
+    if (open.test(result) && !close.test(result)) {
+      result = result.replace(open, (m) => `\n\n\`\`\`fold-${tag}\n`);
+      // 文末补齐围栏
+      if (!/\n```\s*$/.test(result)) {
+        result = result + `\n\`\`\`\n`;
+      }
+    }
+  }
+  return result;
+}
+
+// 仅处理“第一层”的 XML-like 标签，将其转换为折叠块；
+// 若内部还有同名单/其他受支持标签，不再递归转换。
+function convertXmlTagsToFoldFirstLevel(text: string, tags: string[]) {
+  if (!tags || tags.length === 0) return text;
+  const union = tags
+    .map((t) => t.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&"))
+    .join("|");
+  const tokenRe = new RegExp(`<\\/?(?:${union})\\b[^>]*>`, "gi");
+
+  let result = "";
+  let lastIndex = 0;
+  type Open = { tag: string; openStart: number; bodyStart: number };
+  const stack: Open[] = [];
+  let m: RegExpExecArray | null;
+
+  while ((m = tokenRe.exec(text)) !== null) {
+    const token = m[0];
+    const isClose = token.startsWith("</");
+    const tagName = /<\/?([\w-]+)/i.exec(token)?.[1]?.toLowerCase() ?? "";
+
+    if (!isClose) {
+      // opening tag
+      const openStart = m.index;
+      const bodyStart = m.index + token.length;
+      stack.push({ tag: tagName, openStart, bodyStart });
+    } else {
+      // closing tag
+      // find the top-most matching same-tag open
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].tag === tagName) {
+          const open = stack[i];
+          const isTopLevel = i === 0; // 第一层：栈底元素
+          // pop everything from i to end
+          stack.splice(i);
+          if (isTopLevel) {
+            const closeEnd = m.index + token.length;
+            const body = text.slice(open.bodyStart, m.index);
+            const safeBody = String(body).replaceAll(
+              "```",
+              BACKTICK_PLACEHOLDER,
+            );
+            // 追加前置未变更文本
+            result += text.slice(lastIndex, open.openStart);
+            result += `\n\n\`\`\`fold-${tagName}\n${safeBody}\n\`\`\`\n\n`;
+            lastIndex = closeEnd;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  // 若存在未闭合的第一层标签，包裹到末尾
+  if (stack.length > 0) {
+    const first = stack[0];
+    const safeBody = String(text.slice(first.bodyStart)).replaceAll(
+      "```",
+      BACKTICK_PLACEHOLDER,
+    );
+    result += text.slice(lastIndex, first.openStart);
+    result += `\n\n\`\`\`fold-${first.tag}\n${safeBody}\n\`\`\`\n\n`;
+    lastIndex = text.length;
+  }
+
+  // 拼接剩余尾部文本
+  if (lastIndex < text.length) {
+    result += text.slice(lastIndex);
+  }
+  return result || text;
+}
+
+function _MarkDownContent(props: { content: string; allowXmlFold?: boolean }) {
+  const config = useAppConfig();
   const escapedContent = useMemo(() => {
     const withFold = convertFourBackticksToFold(props.content);
-    return tryWrapHtmlCode(escapeBrackets(withFold));
-  }, [props.content]);
+    const finalText =
+      props.allowXmlFold === false
+        ? withFold
+        : convertXmlTagsToFoldFirstLevel(withFold, (config as any).foldXmlTags);
+    return tryWrapHtmlCode(escapeBrackets(finalText));
+  }, [props.content, props.allowXmlFold, config.foldXmlTags]);
 
   return (
     <ReactMarkdown

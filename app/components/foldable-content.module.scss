@@ -1,0 +1,130 @@
+.wrap {
+  margin: 16px 0 24px 0;
+  padding: 8px;
+  background: var(--color-canvas-subtle);
+  border-radius: 12px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  grid-template-rows: auto auto;
+  grid-column-gap: 10px;
+  align-items: start;
+  padding: 10px 14px; // 更紧凑高度
+  background: var(--color-canvas-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: var(--color-fg-muted);
+  overflow: hidden; // 防止内容溢出边界
+}
+
+.left { grid-column: 1 / span 2; grid-row: 1 / span 2; display: grid; grid-template-columns: 24px 1fr auto; grid-template-rows: auto auto; grid-column-gap: 10px; }
+.icon { grid-column: 1; grid-row: 1 / span 2; width: 20px; height: 20px; opacity: .75; }
+.meta { grid-column: 2; grid-row: 1 / span 2; display: grid; grid-template-rows: auto auto; gap: 4px; min-width: 0; }
+.header { grid-row: 1; font-weight: 600; color: var(--color-fg-default); line-height: 18px; }
+.chevron { grid-column: 3; grid-row: 1 / span 2; align-self: center; color: var(--color-fg-muted); font-size: 16px; opacity: .6; }
+.chevronInline { grid-column: 3; grid-row: 1 / span 2; align-self: start; margin-left: 4px; color: var(--color-fg-muted); font-size: 16px; opacity: .6; }
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  margin-left: 8px;
+  gap: 2px;
+  position: relative;
+  overflow: hidden;
+  font-size: 11px; // 缩小预览字体
+  line-height: 1.18;
+  max-height: calc(1.18em * 3 + 2px);
+}
+
+.previous {
+  opacity: 0.55;
+  color: var(--color-fg-muted);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(52ch, 100%);
+  min-height: 1.2em; 
+}
+
+.typing {
+  display: flex;
+  align-items: center;
+}
+
+.line {
+  display: inline-block;
+  white-space: nowrap; // 单行展示
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(52ch, 100%); // 自动限制过长
+}
+
+// 幽灵文本 / 残影效果（仅在 isTyping 为 true 时添加 .ghost）
+.ghost { position: relative; }
+
+// 使用遮罩的透明度渐变实现“幽灵效果”，不复制文字、不做模糊，确保字体清晰
+.ghost .line {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.98) 0%,
+    rgba(0, 0, 0, 0.7) 60%,
+    rgba(0, 0, 0, 0.35) 82%,
+    rgba(0, 0, 0, 0.0) 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.98) 0%,
+    rgba(0, 0, 0, 0.7) 60%,
+    rgba(0, 0, 0, 0.35) 82%,
+    rgba(0, 0, 0, 0.0) 100%
+  );
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+// 移除光标，改为文字型打字机效果
+
+// 右侧渐隐遮罩，营造“若隐若现”的收敛感
+.preview::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 64px;
+  pointer-events: none;
+  background: linear-gradient(to left, var(--color-canvas-default), transparent);
+  opacity: 0.7;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 0.6; }
+  51%, 100% { opacity: 0; }
+}
+
+.summary[aria-expanded="true"] {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: none;
+}
+
+.content {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding: 16px 20px;
+  background: rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top: none;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+

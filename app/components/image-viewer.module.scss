@@ -162,8 +162,10 @@
 .image-wrapper { display: contents; }
 
 .main-image {
+  width: 100%;
+  height: auto;
   max-width: 100%;
-  max-height: 100%;
+  max-height: calc(100vh - 120px);
   object-fit: contain;
   border-radius: 12px;
   box-shadow: 0 32px 64px rgba(0, 0, 0, 0.4);
@@ -318,11 +320,18 @@
 
 // 底部页码
 .pager {
-  margin-top: 12px;
+  margin-top: 0;
+  min-width: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
   color: #fff;
   font-size: 13px;
-  opacity: 0.85;
+  opacity: 0.9;
   text-align: center;
+  pointer-events: none; // 不可点击
 }
 
 .action-section {

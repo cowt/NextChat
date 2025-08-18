@@ -288,7 +288,12 @@ export function ImageViewer({
 
       {/* 底部工具栏 - 居中浮层 */}
       <div className={styles["bottom-toolbar"]}>
-        {/* 缩放/重置/下载：扁平方形按钮，无额外包裹 */}
+        <div
+          className={clsx(styles["toolbar-button"], styles["pager"])}
+          aria-label={`第 ${currentIndex + 1} 张，共 ${images.length} 张`}
+        >
+          {currentIndex + 1}/{images.length}
+        </div>
         <button
           className={styles["toolbar-button"]}
           onClick={zoomOut}
