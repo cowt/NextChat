@@ -417,6 +417,36 @@ export function ImagePreviewer(props: {
 
   const previewRef = useRef<HTMLDivElement>(null);
 
+  // 将外链图片重写为同源代理，避免 CORS 污染 canvas
+  const toProxyUrl = (url: string) => {
+    try {
+      const trimmed = url.replace(/\)+$/g, "");
+      const u = new URL(trimmed, window.location.href);
+      if (u.origin === window.location.origin) return u.toString();
+      if (u.protocol === "data:") return u.toString();
+      return `/api/images/proxy?url=${encodeURIComponent(u.toString())}`;
+    } catch {
+      return url;
+    }
+  };
+
+  const rewritePreviewImagesToProxy = () => {
+    const root = previewRef.current;
+    if (!root) return;
+    const imgs = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+    imgs.forEach((img) => {
+      const original =
+        img.getAttribute("data-src-original") || img.getAttribute("src") || "";
+      if (!original) return;
+      const proxied = toProxyUrl(original);
+      if (proxied !== original) {
+        img.setAttribute("data-src-original", original);
+        img.setAttribute("crossorigin", "anonymous");
+        img.src = proxied;
+      }
+    });
+  };
+
   const copy = () => {
     showToast(Locale.Export.Image.Toast);
     const dom = previewRef.current;
@@ -451,6 +481,8 @@ export function ImagePreviewer(props: {
     const isApp = getClientConfig()?.isApp;
 
     try {
+      // 在导出前将所有外链图片切换为同源代理，避免 CORS
+      rewritePreviewImagesToProxy();
       const blob = await toPng(dom);
       if (!blob) return;
 
