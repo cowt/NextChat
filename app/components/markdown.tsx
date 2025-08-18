@@ -343,9 +343,6 @@ function convertFourBackticksToFold(text: string) {
       const langFromInfo = firstToken.length > 0 ? firstToken : rawInfo;
       const foldLang =
         langFromInfo.length > 0 ? `fold-${langFromInfo}` : "fold";
-      console.log(
-        `[DEBUG] Converting 4-backtick block: info="${rawInfo}", foldLang="${foldLang}"`,
-      );
       // Encode inner triple backticks to avoid prematurely closing the fence.
       const safeBody = String(body).replaceAll("```", BACKTICK_PLACEHOLDER);
       return `\n\n\`\`\`${foldLang}\n${safeBody}\n\`\`\`\n\n`;
@@ -698,11 +695,6 @@ export function Markdown(
 
           {/* 媒体选项选择器（移动到结尾处渲染） */}
           {(() => {
-            console.log(
-              "📄 Markdown 组件渲染，内容长度:",
-              props.content.length,
-            );
-            console.log("📄 内容前200字符:", props.content.substring(0, 200));
             return (
               <MediaOptionSelector
                 content={props.content}

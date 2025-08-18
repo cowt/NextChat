@@ -21,8 +21,6 @@ function detectMediaOptions(content: string): MediaOption[] {
   const lines = content.split("\n");
   const options: MediaOption[] = [];
 
-  console.log("🔍 检测媒体选项，内容行数:", lines.length);
-
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
 
@@ -31,19 +29,15 @@ function detectMediaOptions(content: string): MediaOption[] {
 
     // 调试：打印包含复选框的行
     if (line.includes("- [ ]")) {
-      console.log("🔍 检查复选框行:", line);
-      console.log("🔍 复选框匹配结果:", checkboxMatch);
     }
 
     if (checkboxMatch) {
-      console.log("✅ 找到复选框格式:", line);
       const checkboxContent = checkboxMatch[1].trim();
 
       // 提取媒体URL
       const urlMatch = checkboxContent.match(/(https?:\/\/[^\s]+)/);
       if (urlMatch) {
         const url = urlMatch[1];
-        console.log("🔗 找到URL:", url);
 
         const isMediaUrl =
           /\.(jpg|jpeg|png|gif|webp|svg|mp4|mp3|wav|ogg|pdf|doc|docx)$/i.test(
@@ -54,13 +48,6 @@ function detectMediaOptions(content: string): MediaOption[] {
           url.includes("media") ||
           url.includes("assets") ||
           url.includes("upload");
-
-        console.log(
-          "📷 是否为媒体URL:",
-          isMediaUrl,
-          "包含agent_images:",
-          url.includes("agent_images"),
-        );
 
         if (isMediaUrl) {
           // 尝试从后续行获取描述
@@ -93,14 +80,12 @@ function detectMediaOptions(content: string): MediaOption[] {
             originalText: line,
           };
 
-          console.log("🎯 创建选项:", option);
           options.push(option);
         }
       }
     }
   }
 
-  console.log("📋 最终检测到的选项数量:", options.length);
   return options;
 }
 
@@ -129,12 +114,8 @@ export function MediaOptionSelector({
     }
   }, [mediaOptions.length]);
 
-  console.log("🎨 MediaOptionSelector 渲染，选项数量:", mediaOptions.length);
-  console.log("📝 内容预览:", content.substring(0, 200) + "...");
-
   // 如果没有检测到媒体选项，返回null
   if (mediaOptions.length === 0) {
-    console.log("❌ 没有检测到媒体选项，返回null");
     return null;
   }
 
