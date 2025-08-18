@@ -115,7 +115,7 @@ export function FoldableContent(props: {
   }, [previewText, collapsed, showTypingPreview, currLine]);
 
   return (
-    <div className={styles.wrap}>
+    <div className={`${styles.wrap} foldable-content_wrap`}>
       <div
         className={styles.summary}
         role="button"

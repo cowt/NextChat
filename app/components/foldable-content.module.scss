@@ -5,6 +5,13 @@
   border-radius: 12px;
 }
 
+.wrap.foldable-content_wrap {
+  --fold-wrap-max-width: 720px;
+  width: min(100%, var(--fold-wrap-max-width));
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .summary {
   display: grid;
   grid-template-columns: 24px 1fr;
@@ -39,6 +46,7 @@
   font-size: 11px; // 缩小预览字体
   line-height: 1.18;
   max-height: calc(1.18em * 3 + 2px);
+  max-width: 40ch;
 }
 
 .previous {
@@ -48,7 +56,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: min(52ch, 100%);
+  max-width: min(36ch, 100%);
   min-height: 1.2em; 
 }
 
@@ -62,7 +70,7 @@
   white-space: nowrap; // 单行展示
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: min(52ch, 100%); // 自动限制过长
+  max-width: min(36ch, 100%); // 自动限制过长
 }
 
 // 幽灵文本 / 残影效果（仅在 isTyping 为 true 时添加 .ghost）
