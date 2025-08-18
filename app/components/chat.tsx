@@ -1064,6 +1064,10 @@ function _Chat() {
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [userInput, setUserInput] = useState("");
+  const [selectedCheckboxItems, setSelectedCheckboxItems] = useState<
+    Set<string>
+  >(new Set());
+  const [selectedImages, setSelectedImages] = useState<string[]>([]); // 存储选择的媒体文件URL
   const [isLoading, setIsLoading] = useState(false);
   const { submitKey, shouldSubmit } = useSubmitHandler();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1210,6 +1214,126 @@ function _Chat() {
     }
   };
 
+  // 判断是否为媒体URL（图片、视频、音频、文档等）
+  const isMediaUrl = (text: string): boolean => {
+    // 提取URL
+    const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
+    const url = urlMatch ? urlMatch[1] : text;
+
+    // 检查文件扩展名或路径特征
+    return (
+      /\.(jpg|jpeg|png|gif|webp|svg|mp4|mp3|wav|ogg|pdf|doc|docx)$/i.test(
+        url,
+      ) ||
+      url.includes("agent_images") ||
+      url.includes("image") ||
+      url.includes("media") ||
+      url.includes("assets") ||
+      url.includes("upload") ||
+      /^https?:\/\/.*\.(jpg|jpeg|png|gif|webp|svg|mp4|mp3|wav|ogg|pdf|doc|docx)/i.test(
+        url,
+      )
+    );
+  };
+
+  // 获取纯净的媒体URL
+  const extractMediaUrl = (text: string): string | null => {
+    const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
+    if (urlMatch && isMediaUrl(text)) {
+      return urlMatch[1];
+    }
+    return null;
+  };
+
+  // 获取显示文本（对媒体URL进行优化显示，用于调试或特殊场景）
+  const getDisplayText = (text: string): string => {
+    const mediaUrl = extractMediaUrl(text);
+    if (mediaUrl) {
+      // 提取文件名或ID作为简短描述
+      const urlParts = mediaUrl.split("/");
+      const filename = urlParts[urlParts.length - 1];
+
+      // 判断媒体类型
+      let mediaType = "文件";
+      if (
+        /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(mediaUrl) ||
+        mediaUrl.includes("image") ||
+        mediaUrl.includes("agent_images")
+      ) {
+        mediaType = "图片";
+      } else if (/\.(mp4|avi|mov|wmv)$/i.test(mediaUrl)) {
+        mediaType = "视频";
+      } else if (/\.(mp3|wav|ogg|flac)$/i.test(mediaUrl)) {
+        mediaType = "音频";
+      } else if (/\.(pdf|doc|docx)$/i.test(mediaUrl)) {
+        mediaType = "文档";
+      }
+
+      if (filename.includes("-")) {
+        const id = filename.split("-")[0] || filename.substring(0, 8);
+        return `[${mediaType}: ${id}]`;
+      }
+      return `[${mediaType}: ${filename.substring(0, 12)}...]`;
+    }
+    return text;
+  };
+
+  // 处理复选框切换逻辑
+  const handleCheckboxToggle = (text: string, checked: boolean) => {
+    const newSelectedItems = new Set(selectedCheckboxItems);
+    const newSelectedImages = [...selectedImages];
+
+    if (checked) {
+      // 勾选复选框，将内容添加到输入框
+      newSelectedItems.add(text);
+
+      // 如果是媒体文件，添加到图片列表（用于预览显示）
+      const mediaUrl = extractMediaUrl(text);
+      if (mediaUrl) {
+        newSelectedImages.push(mediaUrl);
+      }
+
+      // 检查原始内容是否已经存在于输入框中
+      const currentInput = userInput.trim();
+      const lines = currentInput
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      // 输入框中使用原始内容，不进行简化
+      if (!lines.includes(text.trim())) {
+        const newInput = currentInput ? `${currentInput}\n${text}` : text;
+        setUserInput(newInput);
+      }
+    } else {
+      // 取消勾选，从输入框删除对应内容
+      newSelectedItems.delete(text);
+
+      // 如果是媒体文件，从图片列表移除
+      const mediaUrl = extractMediaUrl(text);
+      if (mediaUrl) {
+        const imageIndex = newSelectedImages.indexOf(mediaUrl);
+        if (imageIndex > -1) {
+          newSelectedImages.splice(imageIndex, 1);
+        }
+      }
+
+      // 从输入框删除原始内容
+      const lines = userInput.split("\n");
+      const filteredLines = lines.filter((line) => line.trim() !== text.trim());
+      const newInput = filteredLines.join("\n").trim();
+      setUserInput(newInput);
+    }
+
+    setSelectedCheckboxItems(newSelectedItems);
+    setSelectedImages(newSelectedImages);
+
+    // 自动调整输入框高度
+    if (inputRef.current) {
+      autoGrowTextArea(inputRef.current);
+    }
+  };
+
   const doSubmit = (userInput: string) => {
     if (userInput.trim() === "" && isEmpty(attachImages)) return;
     const matchCommand = chatCommands.match(userInput);
@@ -1226,6 +1350,8 @@ function _Chat() {
     setAttachImages([]);
     chatStore.setLastInput(userInput);
     setUserInput("");
+    setSelectedCheckboxItems(new Set()); // 清空已选中的复选框
+    setSelectedImages([]); // 清空已选中的图片
     setPromptHints([]);
     if (!isMobileScreen) inputRef.current?.focus();
     setAutoScroll(true);
@@ -2097,6 +2223,8 @@ function _Chat() {
                               onImageClick={(images, index) => {
                                 imageViewer.showImageViewer(images, index);
                               }}
+                              onCheckboxToggle={handleCheckboxToggle}
+                              selectedCheckboxItems={selectedCheckboxItems}
                             />
                             {/* 对话结尾的进行中指示符（仅最后一条助手消息） */}
                             {config.showProgressTail && (
@@ -2208,10 +2336,11 @@ function _Chat() {
                 setUserInput={setUserInput}
                 setShowChatSidePanel={setShowChatSidePanel}
               />
+
               <label
                 className={clsx(styles["chat-input-panel-inner"], {
                   [styles["chat-input-panel-inner-attach"]]:
-                    attachImages.length !== 0,
+                    attachImages.length !== 0 || selectedImages.length !== 0,
                 })}
                 htmlFor="chat-input"
               >
@@ -2233,12 +2362,13 @@ function _Chat() {
                     fontFamily: config.fontFamily,
                   }}
                 />
-                {attachImages.length != 0 && (
+                {(attachImages.length != 0 || selectedImages.length != 0) && (
                   <div className={styles["attach-images"]}>
+                    {/* 上传的图片 */}
                     {attachImages.map((image, index) => {
                       return (
                         <div
-                          key={index}
+                          key={`upload-${index}`}
                           className={styles["attach-image"]}
                           style={{ backgroundImage: `url("${image}")` }}
                         >
@@ -2248,6 +2378,36 @@ function _Chat() {
                                 setAttachImages(
                                   attachImages.filter((_, i) => i !== index),
                                 );
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* 复选框选择的媒体文件 */}
+                    {selectedImages.map((image, index) => {
+                      return (
+                        <div
+                          key={`selected-${index}`}
+                          className={clsx(
+                            styles["attach-image"],
+                            styles["selected-image"],
+                          )}
+                          style={{ backgroundImage: `url("${image}")` }}
+                        >
+                          <div className={styles["attach-image-mask"]}>
+                            <DeleteImageButton
+                              deleteImage={() => {
+                                // 找到对应的原始文本并移除
+                                const originalText = Array.from(
+                                  selectedCheckboxItems,
+                                ).find(
+                                  (text) => extractMediaUrl(text) === image,
+                                );
+                                if (originalText) {
+                                  handleCheckboxToggle(originalText, false);
+                                }
                               }}
                             />
                           </div>

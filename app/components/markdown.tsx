@@ -26,6 +26,7 @@ import { IconButton } from "./button";
 import { useAppConfig } from "../store/config";
 import clsx from "clsx";
 import FoldableContent from "./foldable-content";
+import { MediaOptionSelector } from "./media-option-selector";
 
 // placeholder for nested triple backticks inside fold bodies
 const BACKTICK_PLACEHOLDER = "__BACKTICK_TRIPLE_PLACEHOLDER__";
@@ -163,12 +164,6 @@ export function PreCode(props: { children: any }) {
       (Array.isArray(child) && child.length > 0)) &&
     typeof childClassName === "string" &&
     /language-fold/.test(childClassName);
-
-  console.log(
-    `[DEBUG] PreCode: child=`,
-    child,
-    `childClassName="${childClassName}", isFold=${isFold}`,
-  );
 
   if (isFold) {
     // Extract the raw text content from the code element
@@ -487,6 +482,25 @@ function _MarkDownContent(props: { content: string; allowXmlFold?: boolean }) {
       components={{
         pre: PreCode,
         code: CustomCode,
+        input: (inputProps) => {
+          // 确保复选框可以正常交互
+          if (inputProps.type === "checkbox") {
+            return (
+              <input
+                {...inputProps}
+                style={{
+                  cursor: "pointer",
+                  pointerEvents: "auto",
+                  ...inputProps.style,
+                }}
+                onChange={() => {
+                  // 让我们的事件处理器处理
+                }}
+              />
+            );
+          }
+          return <input {...inputProps} />;
+        },
         img: (imgProps) => (
           // 优化图片加载：懒加载、异步解码、避免 referrer 引起的 302/签名失效
           <img
@@ -535,44 +549,133 @@ export function Markdown(
     parentRef?: RefObject<HTMLDivElement>;
     defaultShow?: boolean;
     onImageClick?: (images: string[], index: number) => void;
+    onCheckboxToggle?: (text: string, checked: boolean) => void;
+    selectedCheckboxItems?: Set<string>;
   } & React.DOMAttributes<HTMLDivElement>,
 ) {
   const mdRef = useRef<HTMLDivElement>(null);
   const [allImages, setAllImages] = useState<string[]>([]);
 
-  // 收集并设置图片点击事件
+  // 收集并设置图片点击事件和复选框交互
   useEffect(() => {
-    if (!mdRef.current || !props.onImageClick) return;
-
-    const allImgNodes = Array.from(
-      mdRef.current.querySelectorAll<HTMLImageElement>("img"),
-    );
-
-    // 仅对未被 <a> 包裹的图片启用预览，避免与跳转/外链冲突
-    const boundImages = allImgNodes.filter((img) => !img.closest("a"));
-    const imageSrcs = boundImages.map((img) => img.src).filter(Boolean);
-    setAllImages(imageSrcs);
-
     const cleanups: Array<() => void> = [];
 
-    // 为每个可预览图片添加点击事件
-    boundImages.forEach((img, index) => {
-      const handleClick = (e: Event) => {
-        e.preventDefault();
-        e.stopPropagation();
-        props.onImageClick!(imageSrcs, index);
-      };
+    // 处理图片点击事件
+    if (mdRef.current && props.onImageClick) {
+      const allImgNodes = Array.from(
+        mdRef.current.querySelectorAll<HTMLImageElement>("img"),
+      );
 
-      img.style.cursor = "pointer";
-      img.addEventListener("click", handleClick);
-      cleanups.push(() => img.removeEventListener("click", handleClick));
-    });
+      // 仅对未被 <a> 包裹的图片启用预览，避免与跳转/外链冲突
+      const boundImages = allImgNodes.filter((img) => !img.closest("a"));
+      const imageSrcs = boundImages.map((img) => img.src).filter(Boolean);
+      setAllImages(imageSrcs);
+
+      // 为每个可预览图片添加点击事件
+      boundImages.forEach((img, index) => {
+        const handleClick = (e: Event) => {
+          e.preventDefault();
+          e.stopPropagation();
+          props.onImageClick!(imageSrcs, index);
+        };
+
+        img.style.cursor = "pointer";
+        img.addEventListener("click", handleClick);
+        cleanups.push(() => img.removeEventListener("click", handleClick));
+      });
+    }
+
+    // 处理复选框交互
+    if (mdRef.current && props.onCheckboxToggle) {
+      const checkboxes = Array.from(
+        mdRef.current.querySelectorAll<HTMLInputElement>(
+          'input[type="checkbox"]',
+        ),
+      );
+
+      checkboxes.forEach((checkbox, index) => {
+        // 获取复选框所在的列表项文本
+        const listItem = checkbox.closest("li");
+        if (listItem) {
+          // 克隆列表项，移除复选框，然后获取文本
+          const clonedItem = listItem.cloneNode(true) as HTMLElement;
+          const clonedCheckbox = clonedItem.querySelector(
+            'input[type="checkbox"]',
+          );
+          if (clonedCheckbox) {
+            clonedCheckbox.remove();
+          }
+          let textContent = clonedItem.textContent?.trim() || "";
+
+          // 提取媒体URL - 查找http/https开头的URL
+          const urlMatch = textContent.match(/(https?:\/\/[^\s]+)/);
+          if (urlMatch) {
+            // 如果找到URL，检查是否为媒体文件
+            const url = urlMatch[1];
+            const isMediaUrl =
+              /\.(jpg|jpeg|png|gif|webp|svg|mp4|mp3|wav|ogg|pdf|doc|docx)$/i.test(
+                url,
+              ) ||
+              url.includes("agent_images") ||
+              url.includes("image") ||
+              url.includes("media") ||
+              url.includes("assets") ||
+              url.includes("upload");
+
+            if (isMediaUrl) {
+              textContent = url; // 使用纯净的媒体URL
+            }
+          }
+
+          // 根据传入的状态设置复选框的选中状态
+          if (props.selectedCheckboxItems) {
+            checkbox.checked = props.selectedCheckboxItems.has(textContent);
+          }
+
+          const handleCheckboxClick = (e: Event) => {
+            e.stopPropagation();
+            // 使用延迟获取更新后的checked状态
+            setTimeout(() => {
+              const isChecked = checkbox.checked;
+              props.onCheckboxToggle!(textContent, isChecked);
+            }, 0);
+          };
+
+          // 确保复选框可以被点击
+          checkbox.style.cursor = "pointer";
+          checkbox.style.pointerEvents = "auto";
+          checkbox.disabled = false;
+          checkbox.readOnly = false;
+
+          // 处理change事件（标准复选框事件）
+          const handleCheckboxChange = (e: Event) => {
+            const target = e.target as HTMLInputElement;
+            const isChecked = target.checked;
+            props.onCheckboxToggle!(textContent, isChecked);
+          };
+
+          // 添加事件监听
+          checkbox.addEventListener("change", handleCheckboxChange);
+          checkbox.addEventListener("click", handleCheckboxClick);
+
+          cleanups.push(() => {
+            checkbox.removeEventListener("change", handleCheckboxChange);
+            checkbox.removeEventListener("click", handleCheckboxClick);
+          });
+        }
+      });
+    }
 
     // 统一清理，防止重复绑定
     return () => {
       cleanups.forEach((fn) => fn());
     };
-  }, [props.content, props.onImageClick]);
+  }, [
+    props.content,
+    props.onImageClick,
+    props.onCheckboxToggle,
+    props.selectedCheckboxItems,
+  ]);
 
   return (
     <div
@@ -589,7 +692,33 @@ export function Markdown(
       {props.loading ? (
         <LoadingIcon />
       ) : (
-        <MarkdownContent content={props.content} />
+        <>
+          {/* 原有的 Markdown 内容 */}
+          <MarkdownContent content={props.content} />
+
+          {/* 媒体选项选择器（移动到结尾处渲染） */}
+          {(() => {
+            console.log(
+              "📄 Markdown 组件渲染，内容长度:",
+              props.content.length,
+            );
+            console.log("📄 内容前200字符:", props.content.substring(0, 200));
+            return (
+              <MediaOptionSelector
+                content={props.content}
+                onOptionSelect={(option, selected) => {
+                  // 选中后仅填入选项内容（纯文本/URL），不要附加格式
+                  if (props.onCheckboxToggle)
+                    props.onCheckboxToggle(
+                      option.imageUrl || option.originalText,
+                      selected,
+                    );
+                }}
+                selectedOptions={props.selectedCheckboxItems}
+              />
+            );
+          })()}
+        </>
       )}
     </div>
   );
