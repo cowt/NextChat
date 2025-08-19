@@ -564,7 +564,10 @@ export function Markdown(
       );
 
       // 仅对未被 <a> 包裹的图片启用预览，避免与跳转/外链冲突
-      const boundImages = allImgNodes.filter((img) => !img.closest("a"));
+      const boundImages = allImgNodes.filter((img) => {
+        if (img.hasAttribute("data-no-preview")) return false; // 卡片图片不进预览
+        return !img.closest("a");
+      });
       const imageSrcs = boundImages.map((img) => img.src).filter(Boolean);
       setAllImages(imageSrcs);
 
