@@ -49,12 +49,17 @@
       &:hover {
         border-color: #93c5fd; /* hover 轻蓝 */
         box-shadow: 0 1px 3px -1px rgba(59, 130, 246, 0.08);
+        transform: translateZ(0); /* 开启合成层，避免 hover 抖动 */
       }
 
       &.selected {
         border-color: #3b82f6; /* 蓝框 */
-        box-shadow: 0 0 0 2px rgba(59,130,246,0.2), 0 10px 22px -8px rgba(59,130,246,0.35);
-        transform: scale(1.05); /* 放大卡片，突出选中 */
+        /* 强化高亮环，避免缩放导致的文字发虚 */
+        box-shadow:
+          0 0 0 3px rgba(59,130,246,0.26),
+          0 0 0 8px rgba(59,130,246,0.10),
+          0 10px 22px -8px rgba(59,130,246,0.30);
+        transform: none;
         background-color: #f0f7ff; /* 轻微底色提升选中感 */
       }
 
