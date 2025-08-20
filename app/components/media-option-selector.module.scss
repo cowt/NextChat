@@ -206,32 +206,33 @@
         .text-only {
           width: 100%;
           height: 100%;
-          display: flex;
-          flex-direction: column; /* 上下排布 */
-          align-items: flex-start;
-          justify-content: flex-start;
+          display: grid;
+          grid-template-rows: auto 1fr; /* 标题高度 + 剩余空间 */
+          align-items: stretch; /* 各行占满自身网格区域，避免堆叠 */
+          justify-items: start; /* 左对齐 */
           text-align: left;
           padding: 0.375rem; /* 缩小内边距，容纳更多文字 */
           background-color: var(--white);
           z-index: 1;
-          gap: 0.2rem;
+          row-gap: 0.25rem; /* 增加行间距，避免视觉挤压 */
         }
 
         .text-only-title {
           /* 上：副标题（小，灰） */
           font-weight: 600;
           font-size: 0.72rem; /* 更小字号 */
-          line-height: 0.95rem; /* 更紧凑行高 */
+          line-height: 1.1rem; /* 提高行高避免贴合 */
           color: #4b5563;
           overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 1; /* 固定1行，给主文案更多空间 */
-          -webkit-box-orient: vertical;
+          white-space: nowrap; /* 保证单行不换 */
+          text-overflow: ellipsis; /* 单行省略号，避免重叠 */
+          display: block;
+          align-self: start; /* 顶部对齐，位置不变 */
         }
 
         .text-only-desc {
-          /* 下：主文案（大，黑），固定 3 行，底部优先展示 */
-          margin-top: auto;
+          /* 下：主文案（大，黑），固定 3~5 行，整体区域垂直居中 */
+          margin-top: 0; /* 不再向下推，配合容器居中 */
           font-weight: 600;
           font-size: 0.6rem; /* 缩小字号以显示更多字 */
           line-height: 1.0rem; /* 更紧凑行高 */
@@ -240,6 +241,9 @@
           display: -webkit-box;
           -webkit-line-clamp: 5; /* 更多行数 */
           -webkit-box-orient: vertical;
+          align-self: start; /* 第二行顶部对齐，避免与标题堆叠 */
+          word-break: break-word; /* 任何语言都不溢出 */
+          overflow-wrap: anywhere; /* 防止长词重叠 */
         }
 
         /* 覆盖层与选择指示（复用图片卡片的样式） */

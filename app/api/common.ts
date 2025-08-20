@@ -23,14 +23,32 @@ export async function requestOpenai(req: NextRequest) {
 
     authHeaderName = "api-key";
   } else {
-    authValue = req.headers.get("Authorization") ?? "";
+    const isSummaryReq =
+      req.headers.get("x-nextchat-summary") === "1" ||
+      req.headers.get("x-nextchat-summary") === "true";
+    const authSource = req.headers.get("x-nextchat-auth-source") || "";
+    // 当为摘要请求且通过了前端 key/访问码校验（或使用系统 key），允许走摘要通道；
+    // 其中优先覆盖为服务端 SUMMARY_API_KEY（更安全，可隐藏用户 key）。
+    if (isSummaryReq && serverConfig.summaryApiKey) {
+      authValue = `Bearer ${serverConfig.summaryApiKey}`;
+    } else {
+      authValue = req.headers.get("Authorization") ?? "";
+    }
     authHeaderName = "Authorization";
   }
 
   let path = `${req.nextUrl.pathname}`.replaceAll("/api/openai/", "");
 
+  const isSummary =
+    req.headers.get("x-nextchat-summary") === "1" ||
+    req.headers.get("x-nextchat-summary") === "true";
+
   let baseUrl =
-    (isAzure ? serverConfig.azureUrl : serverConfig.baseUrl) || OPENAI_BASE_URL;
+    (isAzure
+      ? serverConfig.azureUrl
+      : isSummary
+      ? serverConfig.summaryBaseUrl || serverConfig.baseUrl
+      : serverConfig.baseUrl) || OPENAI_BASE_URL;
 
   if (!baseUrl.startsWith("http")) {
     baseUrl = `https://${baseUrl}`;
@@ -108,8 +126,14 @@ export async function requestOpenai(req: NextRequest) {
     signal: controller.signal,
   };
 
-  // #1815 try to refuse gpt4 request
-  if (serverConfig.customModels && req.body) {
+  // #1815 try to refuse models not allowed by server
+  const isSummaryCheck =
+    req.headers.get("x-nextchat-summary") === "1" ||
+    req.headers.get("x-nextchat-summary") === "true";
+  const allowList = isSummaryCheck
+    ? serverConfig.summaryCustomModels
+    : serverConfig.customModels;
+  if (allowList && req.body) {
     try {
       const clonedBody = await req.text();
       fetchOptions.body = clonedBody;
@@ -118,15 +142,11 @@ export async function requestOpenai(req: NextRequest) {
 
       // not undefined and is false
       if (
-        isModelNotavailableInServer(
-          serverConfig.customModels,
-          jsonBody?.model as string,
-          [
-            ServiceProvider.OpenAI,
-            ServiceProvider.Azure,
-            jsonBody?.model as string, // support provider-unspecified model
-          ],
-        )
+        isModelNotavailableInServer(allowList, jsonBody?.model as string, [
+          ServiceProvider.OpenAI,
+          ServiceProvider.Azure,
+          jsonBody?.model as string, // support provider-unspecified model
+        ])
       ) {
         return NextResponse.json(
           {

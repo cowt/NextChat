@@ -11,6 +11,8 @@ declare global {
       CODE?: string;
 
       BASE_URL?: string;
+      SUMMARY_BASE_URL?: string; // summary(openai) only
+      SUMMARY_API_KEY?: string; // summary(openai) only
       OPENAI_ORG_ID?: string; // openai only
 
       VERCEL?: string;
@@ -22,6 +24,7 @@ declare global {
       ENABLE_BALANCE_QUERY?: string; // allow user to query balance or not
       DISABLE_FAST_LINK?: string; // disallow parse settings from url or not
       CUSTOM_MODELS?: string; // to control custom models
+      SUMMARY_CUSTOM_MODELS?: string; // to control summary models separately
       DEFAULT_MODEL?: string; // to control default model in every new chat window
       VISION_MODELS?: string; // to control vision models
 
@@ -187,6 +190,8 @@ export const getServerSideConfig = () => {
 
   return {
     baseUrl: process.env.BASE_URL,
+    summaryBaseUrl: process.env.SUMMARY_BASE_URL,
+    summaryApiKey: getApiKey(process.env.SUMMARY_API_KEY),
     apiKey: getApiKey(process.env.OPENAI_API_KEY),
     openaiOrgId: process.env.OPENAI_ORG_ID,
 
@@ -275,6 +280,7 @@ export const getServerSideConfig = () => {
     hideBalanceQuery: !process.env.ENABLE_BALANCE_QUERY,
     disableFastLink: !!process.env.DISABLE_FAST_LINK,
     customModels,
+    summaryCustomModels: process.env.SUMMARY_CUSTOM_MODELS ?? "",
     defaultModel,
     visionModels,
     allowedWebDavEndpoints,

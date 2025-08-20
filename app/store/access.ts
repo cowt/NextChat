@@ -148,6 +148,9 @@ const DEFAULT_ACCESS_STATE = {
   customModels: "",
   defaultModel: "",
   visionModels: "",
+  // summary configs from server
+  summaryCustomModels: "",
+  summaryBaseUrl: "",
 
   // tts config
   edgeTTSVoiceName: "zh-CN-YunxiNeural",

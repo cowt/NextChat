@@ -50,7 +50,7 @@ export const DEFAULT_CONFIG = {
   sendPreviewBubble: true,
   showBusyOverlay: true,
   showProgressTail: true,
-  enableAutoGenerateTitle: false,
+  enableAutoGenerateTitle: true,
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
 
   enableArtifacts: true, // show artifacts config
@@ -66,6 +66,8 @@ export const DEFAULT_CONFIG = {
 
   customModels: "",
   models: DEFAULT_MODELS as any as LLMModel[],
+  // 独立的摘要模型列表（与主模型列表解耦）
+  summaryModels: DEFAULT_MODELS as any as LLMModel[],
 
   modelConfig: {
     model: "gpt-4o-mini" as ModelType,
@@ -79,9 +81,8 @@ export const DEFAULT_CONFIG = {
     historyMessageCount: 64,
     compressMessageLengthThreshold: 9999999999,
     // 独立的摘要模型配置（用于标题生成和历史压缩）
-    summaryModel: config?.defaultSummaryModel ?? "gpt-4o-mini",
-    summaryProviderName: (config?.defaultSummaryProviderName ??
-      "OpenAI") as ServiceProvider,
+    summaryModel: "gpt-4o-mini",
+    summaryProviderName: "OpenAI" as ServiceProvider,
     enableInjectSystemPrompts: true,
     template: config?.template,
     size: "1024x1024" as ModelSize,

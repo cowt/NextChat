@@ -362,6 +362,16 @@ export function getHeaders(ignoreHeaders: boolean = false) {
     );
   }
 
+  // 当走摘要请求时，注入特定 header 标识，以便服务端选择 summaryBaseUrl
+  try {
+    const modelConfig = chatStore.currentSession().mask.modelConfig as any;
+    const usingSummary =
+      modelConfig && modelConfig.__usingSummaryModel === true;
+    if (usingSummary) {
+      headers["x-nextchat-summary"] = "1";
+    }
+  } catch {}
+
   return headers;
 }
 

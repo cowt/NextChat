@@ -4,7 +4,7 @@ import { ModalConfigValidator, ModelConfig } from "../store";
 import Locale from "../locales";
 import { InputRange } from "./input-range";
 import { ListItem, Select } from "./ui-lib";
-import { useAllModels } from "../utils/hooks";
+import { useAllModels, useSummaryModels } from "../utils/hooks";
 import { groupBy } from "lodash-es";
 import styles from "./model-config.module.scss";
 import { getModelProvider } from "../utils/model";
@@ -14,6 +14,7 @@ export function ModelConfigList(props: {
   updateConfig: (updater: (config: ModelConfig) => void) => void;
 }) {
   const allModels = useAllModels();
+  const summaryModels = useSummaryModels();
   const groupModels = groupBy(
     allModels.filter((v) => v.available),
     "provider.providerName",
@@ -260,7 +261,7 @@ export function ModelConfigList(props: {
             });
           }}
         >
-          {allModels
+          {summaryModels
             .filter((v) => v.available)
             .map((v, i) => (
               <option value={`${v.name}@${v.provider?.providerName}`} key={i}>

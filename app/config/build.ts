@@ -40,9 +40,6 @@ export const getBuildConfig = () => {
     buildMode,
     isApp,
     template: process.env.DEFAULT_INPUT_TEMPLATE ?? DEFAULT_INPUT_TEMPLATE,
-    // default summary model for conversation title generation and history compression
-    defaultSummaryModel: process.env.DEFAULT_SUMMARY_MODEL ?? "",
-    defaultSummaryProviderName: process.env.DEFAULT_SUMMARY_PROVIDER_NAME ?? "",
   };
 };
 

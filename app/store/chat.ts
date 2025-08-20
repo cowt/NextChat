@@ -120,52 +120,92 @@ function createEmptySession(): ChatSession {
 }
 
 function getSummarizeModel(modelConfig: any): string[] {
-  // 优先使用用户配置的摘要模型
+  const configStore = useAppConfig.getState();
+  const accessStore = useAccessStore.getState();
+
+  // 构建摘要候选表（优先使用独立的 summaryModels + SUMMARY_CUSTOM_MODELS）
+  const summaryCandidates = collectModelsWithDefaultModel(
+    (configStore as any).summaryModels || configStore.models,
+    [
+      (accessStore as any).summaryCustomModels || "",
+      // 不混入对话 customModels，避免相互污染
+    ].join(","),
+    accessStore.defaultModel,
+  ).filter((m) => m.available);
+
+  // 如果 SUMMARY_CUSTOM_MODELS 仅包含正向白名单（不含 all 或 '-'），则优先按白名单顺序挑选
+  const tokens = ((accessStore as any).summaryCustomModels || "")
+    .split(",")
+    .map((t: string) => t.trim())
+    .filter((t: string) => !!t);
+  const hasAll = tokens.some((t: string) => t.toLowerCase() === "all");
+  const hasMinus = tokens.some((t: string) => t.startsWith("-"));
+  const positiveItems = tokens
+    .filter(
+      (t: string) =>
+        !t.startsWith("-") && !t.includes("=") && t.toLowerCase() !== "all",
+    )
+    .map((t: string) => (t.startsWith("+") ? t.slice(1) : t));
+  if (positiveItems.length > 0 && !hasAll && !hasMinus) {
+    // 遍历白名单顺序，返回第一个在候选表中存在的模型
+    for (const item of positiveItems) {
+      const [modelName, providerName] = item.split(/@(?!.*@)/);
+      const pick = summaryCandidates.find(
+        (m) =>
+          m.name.toLowerCase() === modelName.toLowerCase() &&
+          (!providerName ||
+            (m?.provider?.providerName || "").toLowerCase() ===
+              providerName.toLowerCase() ||
+            (m?.provider?.id || "").toLowerCase() ===
+              providerName.toLowerCase()),
+      );
+      if (pick) {
+        return [pick.name, pick.provider?.providerName as string];
+      }
+    }
+  }
+
+  // 1) 优先使用用户在 UI 中配置的摘要模型（且在候选表中可用）
   if (modelConfig.summaryModel && modelConfig.summaryProviderName) {
-    const configStore = useAppConfig.getState();
-    const accessStore = useAccessStore.getState();
-    const allModel = collectModelsWithDefaultModel(
-      configStore.models,
-      [configStore.customModels, accessStore.customModels].join(","),
-      accessStore.defaultModel,
+    const picked = summaryCandidates.find(
+      (m) => m.name === modelConfig.summaryModel,
     );
-    const summarizeModel = allModel.find(
-      (m) => m.name === modelConfig.summaryModel && m.available,
-    );
-    if (summarizeModel) {
+    if (picked) {
       return [modelConfig.summaryModel, modelConfig.summaryProviderName];
     }
   }
 
-  // 后备逻辑：根据当前模型选择摘要模型
-  const currentModel = modelConfig.model;
-  const providerName = modelConfig.providerName;
-
-  if (currentModel.startsWith("gpt") || currentModel.startsWith("chatgpt")) {
-    const configStore = useAppConfig.getState();
-    const accessStore = useAccessStore.getState();
-    const allModel = collectModelsWithDefaultModel(
-      configStore.models,
-      [configStore.customModels, accessStore.customModels].join(","),
-      accessStore.defaultModel,
-    );
-    const summarizeModel = allModel.find(
-      (m) => m.name === SUMMARIZE_MODEL && m.available,
-    );
-    if (summarizeModel) {
-      return [
-        summarizeModel.name,
-        summarizeModel.provider?.providerName as string,
-      ];
-    }
+  // 2) 尝试使用内置推荐摘要模型（如 gpt-4o-mini）
+  const recommended = summaryCandidates.find((m) => m.name === SUMMARIZE_MODEL);
+  if (recommended) {
+    return [recommended.name, recommended.provider?.providerName as string];
   }
+
+  // 3) 如果当前模型为 GPT 或 GEMINI/DEEPSEEK 系列，按系列回退
+  const currentModel = (modelConfig.model || "").toLowerCase();
+  const providerName = modelConfig.providerName;
   if (currentModel.startsWith("gemini")) {
     return [GEMINI_SUMMARIZE_MODEL, ServiceProvider.Google];
-  } else if (currentModel.startsWith("deepseek-")) {
+  }
+  if (currentModel.startsWith("deepseek-")) {
     return [DEEPSEEK_SUMMARIZE_MODEL, ServiceProvider.DeepSeek];
   }
+  if (currentModel.startsWith("gpt") || currentModel.startsWith("chatgpt")) {
+    // 若没找到内置推荐，则选候选表第一个
+    if (summaryCandidates.length > 0) {
+      const first = summaryCandidates[0];
+      return [first.name, first.provider?.providerName as string];
+    }
+  }
 
-  return [currentModel, providerName];
+  // 4) 兜底：避免返回 "auto" 这样的无效模型名，尽量从候选表选一个
+  if (summaryCandidates.length > 0) {
+    const first = summaryCandidates[0];
+    return [first.name, first.provider?.providerName as string];
+  }
+
+  // 5) 最后兜底：回退到当前对话模型（若也为 auto，依然返回，但上游可能 403）
+  return [modelConfig.model, providerName];
 }
 
 function countMessages(msgs: ChatMessage[]) {
@@ -741,6 +781,10 @@ export const useChatStore = createPersistStore(
                 content: Locale.Store.Prompt.Topic,
               }),
             );
+          // 标记：使用摘要模型（用于服务端选择独立的 summaryBaseUrl）
+          titleApi as any;
+          // 标记：使用摘要模型（用于服务端选择独立的 summaryBaseUrl）
+          (session.mask.modelConfig as any).__usingSummaryModel = true;
           titleApi.llm.chat({
             messages: topicMessages,
             config: {
@@ -749,6 +793,7 @@ export const useChatStore = createPersistStore(
               providerName: titleProviderName,
             },
             onFinish(message, responseRes) {
+              delete (session.mask.modelConfig as any).__usingSummaryModel;
               if (responseRes?.status === 200) {
                 get().updateTargetSession(
                   session,
@@ -757,6 +802,9 @@ export const useChatStore = createPersistStore(
                       message.length > 0 ? trimTopic(message) : DEFAULT_TOPIC),
                 );
               }
+            },
+            onError() {
+              delete (session.mask.modelConfig as any).__usingSummaryModel;
             },
           });
         }
@@ -807,6 +855,9 @@ export const useChatStore = createPersistStore(
            * this param is just shit
            **/
           const { max_tokens, ...modelcfg } = modelConfig;
+          // 在 headers 中注入摘要标记（通过 client/api.ts 读取 mask.modelConfig 上的隐藏标记）
+          // 临时设置当前会话 mask 上的隐藏标记
+          (session.mask.modelConfig as any).__usingSummaryModel = true;
           api.llm.chat({
             messages: toBeSummarizedMsgs.concat(
               createMessage({
@@ -825,6 +876,7 @@ export const useChatStore = createPersistStore(
               session.memoryPrompt = message;
             },
             onFinish(message, responseRes) {
+              delete (session.mask.modelConfig as any).__usingSummaryModel;
               if (responseRes?.status === 200) {
                 console.log("[Memory] ", message);
                 get().updateTargetSession(session, (session) => {
@@ -834,6 +886,7 @@ export const useChatStore = createPersistStore(
               }
             },
             onError(err) {
+              delete (session.mask.modelConfig as any).__usingSummaryModel;
               console.error("[Summarize] ", err);
             },
           });

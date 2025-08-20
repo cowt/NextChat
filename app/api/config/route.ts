@@ -15,6 +15,9 @@ const DANGER_CONFIG = {
   customModels: serverConfig.customModels,
   defaultModel: serverConfig.defaultModel,
   visionModels: serverConfig.visionModels,
+  summaryCustomModels: serverConfig.summaryCustomModels,
+  summaryBaseUrl: serverConfig.summaryBaseUrl,
+  // 安全起见，不下发 summaryApiKey 到客户端
   announcement: serverConfig.announcement,
 };
 

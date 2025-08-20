@@ -25,10 +25,10 @@ function parseApiKey(bearToken: string) {
 }
 
 export function auth(req: NextRequest, modelProvider: ModelProvider) {
-  const authToken = req.headers.get("Authorization") ?? "";
+  const originalAuthToken = req.headers.get("Authorization") ?? "";
 
   // check if it is openai api key or user token
-  const { accessCode, apiKey } = parseApiKey(authToken);
+  const { accessCode, apiKey } = parseApiKey(originalAuthToken);
 
   const hashedCode = md5.hash(accessCode ?? "").trim();
 
@@ -116,11 +116,20 @@ export function auth(req: NextRequest, modelProvider: ModelProvider) {
     if (systemApiKey) {
       console.log("[Auth] use system api key");
       req.headers.set("Authorization", `Bearer ${systemApiKey}`);
+      // 标记认证来源为服务端系统 key 注入
+      req.headers.set("x-nextchat-auth-source", "system");
     } else {
       console.log("[Auth] admin did not provide an api key");
     }
   } else {
     console.log("[Auth] use user api key");
+    // 标记认证来源为用户 key
+    req.headers.set("x-nextchat-auth-source", "user");
+  }
+
+  // 如果通过了 access code 校验，则标记来源为 access-code（优先级高于 system 注入）
+  if (serverConfig.needCode && serverConfig.codes.has(hashedCode)) {
+    req.headers.set("x-nextchat-auth-source", "access-code");
   }
 
   return {
