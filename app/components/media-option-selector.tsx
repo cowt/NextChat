@@ -51,24 +51,18 @@ function detectMediaOptions(content: string): MediaOption[] {
       // 尝试从后续行获取描述
       let description = "";
       let j = i + 1;
-      while (
-        j < lines.length &&
-        lines[j].trim() &&
-        !lines[j].trim().match(/^\s*-\s*\[\s*\]/)
-      ) {
-        description += lines[j].trim() + " ";
+      while (j < lines.length) {
+        const next = lines[j].trim();
+        // 终止条件：空行 / 新的复选项 / 纯标签（如 </tools> 等）
+        const isNextOption = /^\s*-\s*\[\s*\]/.test(next);
+        const isPureTag = /^(?:<\/?[\w:-]+(?:\s+[^>]*)?>\s*)+$/.test(next);
+        if (!next || isNextOption || isPureTag) break;
+        description += next + " ";
         j++;
       }
 
-      // 从复选框内容中提取标题
-      let title = checkboxContent;
-      if (checkboxContent.includes("**")) {
-        // 提取粗体文本作为标题
-        const titleMatch = checkboxContent.match(/\*\*(.+?)\*\*/);
-        if (titleMatch) {
-          title = titleMatch[1];
-        }
-      }
+      // 计算显示编号（仅统计有效选项）
+      const displayIndex = options.length + 1;
 
       // 同行内的文字描述（如：**Option 1**：后面的部分）
       let inlineDesc = "";
@@ -77,13 +71,25 @@ function detectMediaOptions(content: string): MediaOption[] {
         inlineDesc = checkboxContent.slice(colonIndex + 1).trim();
       }
 
+      // 标题优先级：加粗文本 > 冒号左侧 > 占位“选项 N”
+      const boldTitle = checkboxContent.match(/\*\*(.+?)\*\*/)?.[1];
+      const title = boldTitle
+        ? boldTitle
+        : colonIndex >= 0
+        ? checkboxContent.slice(0, colonIndex).trim()
+        : `选项 ${displayIndex}`;
+
+      // 描述优先级：
+      // - 媒体：后续行描述，否则“媒体选项”
+      // - 文本：同行冒号右侧 > 后续行描述 > 当前整行文本
+      const computedDesc = isMediaUrl
+        ? description || "媒体选项"
+        : inlineDesc || description || checkboxContent;
+
       const option: MediaOption = {
         id: `option-${i + 1}`,
-        title: title,
-        description: (
-          (isMediaUrl ? description : inlineDesc || description) ||
-          (isMediaUrl ? "媒体选项" : "文本选项")
-        ).trim(),
+        title,
+        description: computedDesc.trim(),
         imageUrl: isMediaUrl ? url : "",
         originalText: checkboxContent,
       };
