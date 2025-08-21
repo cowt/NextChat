@@ -74,12 +74,13 @@ self.addEventListener("fetch", (e) => {
   } catch (_) {}
 
   // Image cache: Cache First + background revalidate
-  // Only handle GET requests for images; skip data/object/chrome-extension URLs
+  // Only handle GET requests for same-origin images; skip cross-origin/data/object/chrome-extension URLs
   try {
     const isGet = e.request.method === 'GET';
     const isImage = e.request.destination === 'image';
     const isHttp = url.protocol === 'http:' || url.protocol === 'https:';
-    if (isGet && isImage && isHttp) {
+    const isSameOrigin = url.origin === self.location.origin;
+    if (isGet && isImage && isHttp && isSameOrigin) {
       e.respondWith((async () => {
         const cache = await caches.open(CHATGPT_NEXT_WEB_IMG_CACHE);
         const cached = await cache.match(e.request);
