@@ -35,6 +35,8 @@ import CloseIcon from "../icons/close.svg";
 import CancelIcon from "../icons/cancel.svg";
 import ImageIcon from "../icons/image.svg";
 import { ImageViewer, useImageViewer } from "./image-viewer";
+import { OptimizedImage, OptimizedImageGrid } from "./optimized-image";
+import { ImageManagerPanel } from "./image-manager-panel";
 
 import LightIcon from "../icons/light.svg";
 import DarkIcon from "../icons/dark.svg";
@@ -2208,7 +2210,7 @@ function _Chat() {
                           )}
                           <div className={styles["chat-message-item"]}>
                             <Markdown
-                              key={message.streaming ? "loading" : "done"}
+                              key={`message-${message.id || i}`}
                               content={getMessageTextContent(message)}
                               loading={
                                 (message.preview || message.streaming) &&
@@ -2238,22 +2240,27 @@ function _Chat() {
                               />
                             )}
                             {getMessageImages(message).length == 1 && (
-                              <img
-                                className={styles["chat-message-item-image"]}
+                              <OptimizedImage
                                 src={getMessageImages(message)[0]}
                                 alt=""
-                                onClick={(e) =>
+                                className={styles["chat-message-item-image"]}
+                                containerStyle={{ cursor: "pointer" }}
+                                onClick={(src, e) =>
                                   handleImageClick(
                                     e,
                                     getMessageImages(message),
                                     0,
                                   )
                                 }
-                                style={{ cursor: "pointer" }}
+                                lazy={true}
+                                compress={true}
                               />
                             )}
                             {getMessageImages(message).length > 1 && (
-                              <div
+                              <OptimizedImageGrid
+                                images={getMessageImages(message)}
+                                columns={Math.min(getMessageImages(message).length, 3)}
+                                gap={10}
                                 className={styles["chat-message-item-images"]}
                                 style={
                                   {
@@ -2261,32 +2268,23 @@ function _Chat() {
                                       getMessageImages(message).length,
                                   } as React.CSSProperties
                                 }
-                              >
-                                {getMessageImages(message).map(
-                                  (image, index) => {
-                                    return (
-                                      <img
-                                        className={
-                                          styles[
-                                            "chat-message-item-image-multi"
-                                          ]
-                                        }
-                                        key={index}
-                                        src={image}
-                                        alt=""
-                                        onClick={(e) =>
-                                          handleImageClick(
-                                            e,
-                                            getMessageImages(message),
-                                            index,
-                                          )
-                                        }
-                                        style={{ cursor: "pointer" }}
-                                      />
-                                    );
-                                  },
-                                )}
-                              </div>
+                                onImageClick={(src, index) => {
+                                  const fakeEvent = {
+                                    preventDefault: () => {},
+                                    stopPropagation: () => {},
+                                  } as React.MouseEvent<HTMLImageElement>;
+                                  handleImageClick(
+                                    fakeEvent,
+                                    getMessageImages(message),
+                                    index,
+                                  );
+                                }}
+                                imageProps={{
+                                  className: styles["chat-message-item-image-multi"],
+                                  lazy: true,
+                                  compress: true,
+                                }}
+                              />
                             )}
                           </div>
                           {message?.audio_url && (

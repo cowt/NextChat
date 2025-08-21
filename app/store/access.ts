@@ -293,7 +293,6 @@ export const useAccessStore = createPersistStore(
           return res;
         })
         .then((res: DangerConfig & { announcement?: any }) => {
-          console.log("[Config] got config from server", res);
           set(() => ({ ...res }) as any);
         })
         .catch(() => {

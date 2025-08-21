@@ -110,26 +110,9 @@ export async function preProcessImageContentForAlibabaDashScope(
   }));
 }
 
-const imageCaches: Record<string, string> = {};
-export function cacheImageToBase64Image(imageUrl: string) {
-  if (imageUrl.includes(CACHE_URL_PREFIX)) {
-    if (!imageCaches[imageUrl]) {
-      const reader = new FileReader();
-      return fetch(imageUrl, {
-        method: "GET",
-        mode: "cors",
-        credentials: "include",
-      })
-        .then((res) => res.blob())
-        .then(
-          async (blob) =>
-            (imageCaches[imageUrl] = await compressImage(blob, 256 * 1024)),
-        ); // compressImage
-    }
-    return Promise.resolve(imageCaches[imageUrl]);
-  }
-  return Promise.resolve(imageUrl);
-}
+// 为了保持兼容性，重新导出 cacheImageToBase64Image
+import { cacheImageToBase64Image } from './image-manager';
+export { cacheImageToBase64Image };
 
 export function base64Image2Blob(base64Data: string, contentType: string) {
   const byteCharacters = atob(base64Data);

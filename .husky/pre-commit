@@ -1,4 +1,7 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
+# Add Homebrew path to ensure npx is found
+export PATH="/opt/homebrew/bin:$PATH"
+
 npx lint-staged

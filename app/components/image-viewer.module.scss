@@ -544,3 +544,35 @@
     transition: none;
   }
 }
+
+// 错误状态样式
+.error-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.error-message {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+  text-align: center;
+  padding: 20px;
+}
+
+@media (max-width: 768px) {
+  .error-placeholder {
+    min-height: 150px;
+  }
+  
+  .error-message {
+    font-size: 14px;
+    padding: 15px;
+  }
+}

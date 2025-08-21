@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useMobileScreen } from "../utils";
 import styles from "./image-viewer.module.scss";
 import clsx from "clsx";
+import { useImage } from "../utils/use-image";
 
 import CloseIcon from "../icons/close.svg";
 import DownloadIcon from "../icons/download.svg";
@@ -42,16 +43,31 @@ export function ImageViewer({
   const currentImage = images[currentIndex];
   const hasMultipleImages = images.length > 1;
 
+  // 使用图片管理器加载当前图片
+  const {
+    dataUrl: currentImageDataUrl,
+    loading: currentImageLoading,
+    error: currentImageError,
+    blob: currentImageBlob,
+  } = useImage(visible ? currentImage : undefined, {
+    compress: false, // 查看器不压缩，保持原图质量
+    forceReload: false,
+  });
+
   // 重置状态当组件变为可见时
   useEffect(() => {
     if (visible) {
       setCurrentIndex(initialIndex);
-      setImageLoaded(false);
-      setIsLoading(true);
       setScale(1);
       setOffset({ x: 0, y: 0 });
     }
-  }, [visible, initialIndex]);
+  }, [visible, initialIndex, images]);
+
+  // 同步图片管理器的加载状态
+  useEffect(() => {
+    setIsLoading(currentImageLoading);
+    setImageLoaded(!currentImageLoading && !currentImageError && !!currentImageDataUrl);
+  }, [currentImageLoading, currentImageError, currentImageDataUrl]);
 
   // 键盘导航
   useEffect(() => {
@@ -85,15 +101,11 @@ export function ImageViewer({
 
   const goToPrevious = useCallback(() => {
     if (!hasMultipleImages) return;
-    setImageLoaded(false);
-    setIsLoading(true);
     setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
   }, [hasMultipleImages, images.length]);
 
   const goToNext = useCallback(() => {
     if (!hasMultipleImages) return;
-    setImageLoaded(false);
-    setIsLoading(true);
     setCurrentIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
   }, [hasMultipleImages, images.length]);
 
@@ -101,8 +113,15 @@ export function ImageViewer({
     if (!currentImage) return;
 
     try {
-      const response = await fetch(currentImage);
-      const blob = await response.blob();
+      // 优先使用已经缓存的blob
+      let blob = currentImageBlob;
+      
+      if (!blob) {
+        // 如果没有缓存，才发起请求
+        const response = await fetch(currentImage);
+        blob = await response.blob();
+      }
+      
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -116,7 +135,7 @@ export function ImageViewer({
     } catch (error) {
       console.error("下载图片失败:", error);
     }
-  }, [currentImage, currentIndex]);
+  }, [currentImage, currentIndex, currentImageBlob]);
 
   const handleImageLoad = () => {
     setIsLoading(false);
@@ -146,12 +165,26 @@ export function ImageViewer({
     setOffset({ x: 0, y: 0 });
   };
 
-  const handleWheel: React.WheelEventHandler<HTMLDivElement> = (e) => {
-    if (!visible) return;
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.2 : 0.2;
-    setScale((s) => clamp(Number((s + delta).toFixed(2)), 0.5, 4));
-  };
+  // 使用useEffect添加原生wheel事件监听器，以避免被动监听器警告
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (!visible) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.2 : 0.2;
+      setScale((s) => clamp(Number((s + delta).toFixed(2)), 0.5, 4));
+    };
+
+    if (containerRef.current && visible) {
+      // 明确设置为非被动模式
+      containerRef.current.addEventListener('wheel', handleWheel, { passive: false });
+      
+      return () => {
+        if (containerRef.current) {
+          containerRef.current.removeEventListener('wheel', handleWheel);
+        }
+      };
+    }
+  }, [visible]);
 
   // 拖拽
   const onMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
@@ -219,7 +252,6 @@ export function ImageViewer({
       onClick={handleBackdropClick}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      onWheel={handleWheel}
       ref={containerRef}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
@@ -245,21 +277,31 @@ export function ImageViewer({
             <div className={styles["loading-spinner"]} />
           </div>
         )}
-        <img
-          ref={imageRef}
-          src={currentImage}
-          alt={`图片 ${currentIndex + 1}`}
-          className={clsx(styles["main-image"], {
-            [styles["image-loaded"]]: imageLoaded,
-          })}
-          style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-            cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
-          }}
-          onLoad={handleImageLoad}
-          onError={handleImageError}
-          onDragStart={(e) => e.preventDefault()}
-        />
+        {currentImageDataUrl && (
+          <img
+            ref={imageRef}
+            src={currentImageDataUrl}
+            alt={`图片 ${currentIndex + 1}`}
+            className={clsx(styles["main-image"], {
+              [styles["image-loaded"]]: imageLoaded,
+            })}
+            style={{
+              transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+              cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
+            }}
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+            onDragStart={(e) => e.preventDefault()}
+          />
+        )}
+        
+        {currentImageError && (
+          <div className={styles["error-placeholder"]}>
+            <div className={styles["error-message"]}>
+              图片加载失败
+            </div>
+          </div>
+        )}
 
         {/* 右箭头（透明图标） */}
         {hasMultipleImages && (

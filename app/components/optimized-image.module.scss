@@ -1,0 +1,136 @@
+.container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  
+  img {
+    max-width: 100%;
+    height: auto;
+    object-fit: cover;
+    transition: opacity 0.3s ease;
+  }
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 100px;
+  background-color: var(--gray-50);
+  border: 1px dashed var(--gray-300);
+  border-radius: 4px;
+}
+
+.placeholderDefault {
+  width: 40px;
+  height: 40px;
+  background-color: var(--gray-300);
+  border-radius: 4px;
+  position: relative;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'/%3e%3c/svg%3e");
+    background-size: contain;
+    background-repeat: no-repeat;
+  }
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 100px;
+  background-color: var(--gray-50);
+  border-radius: 4px;
+}
+
+.loadingIndicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 8px;
+  
+  svg {
+    width: 100%;
+    height: 100%;
+    animation: spin 1s linear infinite;
+    color: var(--primary-color);
+  }
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 100px;
+  background-color: var(--red-50);
+  border: 1px solid var(--red-200);
+  border-radius: 4px;
+}
+
+.errorMessage {
+  font-size: 12px;
+  color: var(--red-600);
+  text-align: center;
+  padding: 8px;
+}
+
+.grid {
+  width: 100%;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// 深色模式支持
+@media (prefers-color-scheme: dark) {
+  .placeholder {
+    background-color: var(--gray-800);
+    border-color: var(--gray-600);
+  }
+  
+  .placeholderDefault {
+    background-color: var(--gray-600);
+    
+    &::before {
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z'/%3e%3c/svg%3e");
+    }
+  }
+  
+  .loading {
+    background-color: var(--gray-800);
+  }
+  
+  .error {
+    background-color: var(--red-900);
+    border-color: var(--red-700);
+  }
+  
+  .errorMessage {
+    color: var(--red-300);
+  }
+}

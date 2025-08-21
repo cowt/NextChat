@@ -32,6 +32,7 @@ import {
   showImageModal,
   showModal,
 } from "@/app/components/ui-lib";
+import { OptimizedImage } from "../optimized-image";
 import { removeImage } from "@/app/utils/chat";
 import { SideBar } from "./sd-sidebar";
 import { WindowContent } from "@/app/components/home";
@@ -162,13 +163,13 @@ export function Sd() {
                       className={styles["sd-img-item"]}
                     >
                       {item.status === "success" ? (
-                        <img
-                          className={styles["img"]}
+                        <OptimizedImage
                           src={item.img_data}
                           alt={item.id}
-                          onClick={(e) =>
+                          className={styles["img"]}
+                          onClick={(src, e) =>
                             showImageModal(
-                              item.img_data,
+                              src,
                               true,
                               isMobileScreen
                                 ? { width: "100%", height: "fit-content" }
@@ -178,6 +179,8 @@ export function Sd() {
                                 : { width: "100%", height: "100%" },
                             )
                           }
+                          lazy={false}
+                          compress={false}
                         />
                       ) : item.status === "error" ? (
                         <div className={styles["pre-img"]}>

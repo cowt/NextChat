@@ -64,6 +64,10 @@ const PluginPage = dynamic(async () => (await import("./plugin")).PluginPage, {
   loading: () => <Loading noLogo />,
 });
 
+const Library = dynamic(async () => (await import("./library")).Library, {
+  loading: () => <Loading noLogo />,
+});
+
 const SearchChat = dynamic(
   async () => (await import("./search-chat")).SearchChatPage,
   {
@@ -199,6 +203,7 @@ function Screen() {
             <Route path={Path.Masks} element={<MaskPage />} />
             <Route path={Path.Plugins} element={<PluginPage />} />
             <Route path={Path.SearchChat} element={<SearchChat />} />
+            <Route path={Path.Library} element={<Library />} />
             <Route path={Path.Chat} element={<Chat />} />
             <Route path={Path.Settings} element={<Settings />} />
             <Route path={Path.McpMarket} element={<McpMarketPage />} />
@@ -240,16 +245,13 @@ export function Home() {
   useHtmlLang();
 
   useEffect(() => {
-    console.log("[Config] got config from build time", getClientConfig());
     useAccessStore.getState().fetch();
 
     const initMcp = async () => {
       try {
         const enabled = await isMcpEnabled();
         if (enabled) {
-          console.log("[MCP] initializing...");
           await initializeMcpSystem();
-          console.log("[MCP] initialized");
         }
       } catch (err) {
         console.error("[MCP] failed to initialize:", err);

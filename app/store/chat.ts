@@ -458,6 +458,19 @@ export const useChatStore = createPersistStore(
 
         get().checkMcpJson(message);
 
+        // 通知照片收集器有新消息
+        if (typeof window !== 'undefined') {
+          try {
+            import('../utils/photo-collector').then(({ photoCollector }) => {
+              photoCollector.onNewMessage(message, targetSession);
+            }).catch(error => {
+              console.warn('[ChatStore] 照片收集器通知失败:', error);
+            });
+          } catch (error) {
+            console.warn('[ChatStore] 照片收集器导入失败:', error);
+          }
+        }
+
         get().summarizeSession(false, targetSession);
       },
 

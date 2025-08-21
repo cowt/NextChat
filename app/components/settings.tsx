@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 
 import styles from "./settings.module.scss";
+import { ImageManagerPanel } from "./image-manager-panel";
 
 import ResetIcon from "../icons/reload.svg";
 import AddIcon from "../icons/add.svg";
@@ -581,6 +582,7 @@ function SyncItems() {
 export function Settings() {
   const navigate = useNavigate();
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showImageManagerPanel, setShowImageManagerPanel] = useState(false);
   const config = useAppConfig();
   const updateConfig = config.update;
 
@@ -1634,6 +1636,17 @@ export function Settings() {
             </Select>
           </ListItem>
 
+          <ListItem 
+            title="图片缓存管理"
+            subTitle="查看和管理图片缓存状态"
+          >
+            <IconButton
+              icon={<ConfigIcon />}
+              text="打开面板"
+              onClick={() => setShowImageManagerPanel(true)}
+            />
+          </ListItem>
+
           <ListItem
             title={Locale.Settings.FontSize.Title}
             subTitle={Locale.Settings.FontSize.SubTitle}
@@ -1984,6 +1997,13 @@ export function Settings() {
 
         <DangerItems />
       </div>
+
+      {showImageManagerPanel && (
+        <ImageManagerPanel 
+          visible={showImageManagerPanel}
+          onClose={() => setShowImageManagerPanel(false)}
+        />
+      )}
     </ErrorBoundary>
   );
 }

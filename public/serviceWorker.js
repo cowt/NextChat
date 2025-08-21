@@ -73,50 +73,25 @@ self.addEventListener("fetch", (e) => {
     }
   } catch (_) {}
 
-  // Image cache: Cache First + background revalidate
-  // Only handle GET requests for same-origin images; skip cross-origin/data/object/chrome-extension URLs
+  // 🎯 统一缓存策略：完全跳过Service Worker图片缓存
+  // 让ImageManager统一管理所有图片请求，避免双重缓存冲突
   try {
     const isGet = e.request.method === 'GET';
     const isImage = e.request.destination === 'image';
-    const isHttp = url.protocol === 'http:' || url.protocol === 'https:';
-    const isSameOrigin = url.origin === self.location.origin;
-    if (isGet && isImage && isHttp && isSameOrigin) {
-      e.respondWith((async () => {
-        const cache = await caches.open(CHATGPT_NEXT_WEB_IMG_CACHE);
-        const cached = await cache.match(e.request);
-
-        // Fire and forget background update when we have a cached response
-        const revalidate = (async () => {
-          try {
-            const res = await fetch(e.request);
-            // opaque responses (cross-origin without CORS) have status 0 but are still cacheable
-            if (res) {
-              const ok = (res.status === 200) || (res.type === 'opaque') || (res.ok === true);
-              if (ok) {
-                await cache.put(e.request, res.clone());
-              }
-            }
-          } catch (_) {}
-        })();
-        if (cached) {
-          // keep service worker alive until revalidate finishes
-          e.waitUntil(revalidate);
-          return cached;
-        }
-        // No cache hit: fetch from network and cache
-        const res = await fetch(e.request);
-        try {
-          if (res) {
-            const ok = (res.status === 200) || (res.type === 'opaque') || (res.ok === true);
-            if (ok) {
-              const cache = await caches.open(CHATGPT_NEXT_WEB_IMG_CACHE);
-              await cache.put(e.request, res.clone());
-            }
-          }
-        } catch (_) {}
-        return res;
-      })());
+    
+    // 🚨 重要：所有图片请求都跳过Service Worker缓存
+    // 交给应用层的ImageManager统一处理
+    if (isGet && isImage) {
+      // 直接放行，不进行任何缓存处理
       return;
+    }
+  } catch (_) {}
+  
+  // 🧹 清理旧的图片缓存（一次性操作）
+  try {
+    if (!self.__IMAGE_CACHE_CLEARED) {
+      self.__IMAGE_CACHE_CLEARED = true;
+      caches.delete(CHATGPT_NEXT_WEB_IMG_CACHE).catch(() => {});
     }
   } catch (_) {}
 });

@@ -1,0 +1,242 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.panel {
+  background: var(--white);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border-in-light);
+
+  h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--black);
+  }
+}
+
+.content {
+  padding: 20px 24px;
+  overflow-y: auto;
+  max-height: calc(80vh - 140px);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  background-color: var(--gray-50);
+  border-radius: 8px;
+  border: 1px solid var(--border-in-light);
+}
+
+.label {
+  font-size: 12px;
+  color: var(--gray-600);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--black);
+}
+
+.usage {
+  margin-bottom: 20px;
+}
+
+.usageLabel {
+  font-size: 14px;
+  color: var(--black);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.usageBar {
+  width: 100%;
+  height: 8px;
+  background-color: var(--gray-200);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.usageProgress {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-color), var(--primary-hover));
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.actions {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+}
+
+.info {
+  h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--black);
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 20px;
+    
+    li {
+      font-size: 12px;
+      color: var(--gray-600);
+      line-height: 1.5;
+      margin-bottom: 4px;
+      
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+
+.footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-in-light);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.closeButton {
+  padding: 8px 16px;
+  border: 1px solid var(--border-in-light);
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--black);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-300);
+  }
+}
+
+// 移动端适配
+@media (max-width: 640px) {
+  .panel {
+    width: 95%;
+    margin: 20px;
+  }
+
+  .stats {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .statItem {
+    padding: 12px;
+  }
+
+  .content {
+    padding: 16px 20px;
+  }
+
+  .header {
+    padding: 16px 20px 12px;
+  }
+
+  .footer {
+    padding: 12px 20px;
+  }
+}
+
+// 深色模式
+@media (prefers-color-scheme: dark) {
+  .panel {
+    background: var(--gray-900);
+  }
+
+  .header {
+    border-bottom-color: var(--gray-700);
+
+    h3 {
+      color: var(--white);
+    }
+  }
+
+  .statItem {
+    background-color: var(--gray-800);
+    border-color: var(--gray-700);
+  }
+
+  .label {
+    color: var(--gray-400);
+  }
+
+  .value {
+    color: var(--white);
+  }
+
+  .usageLabel {
+    color: var(--white);
+  }
+
+  .usageBar {
+    background-color: var(--gray-700);
+  }
+
+  .info {
+    h4 {
+      color: var(--white);
+    }
+
+    li {
+      color: var(--gray-400);
+    }
+  }
+
+  .footer {
+    border-top-color: var(--gray-700);
+  }
+
+  .closeButton {
+    background: var(--gray-800);
+    border-color: var(--gray-700);
+    color: var(--white);
+
+    &:hover {
+      background: var(--gray-700);
+      border-color: var(--gray-600);
+    }
+  }
+}

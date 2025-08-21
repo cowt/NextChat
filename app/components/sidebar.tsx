@@ -13,6 +13,7 @@ import McpIcon from "../icons/mcp.svg";
 import DragIcon from "../icons/drag.svg";
 import DiscoveryIcon from "../icons/discovery.svg";
 import FireIcon from "../icons/fire.svg";
+import ImageIcon from "../icons/image.svg";
 
 import Locale from "../locales";
 
@@ -241,6 +242,7 @@ export function SideBar(props: { className?: string }) {
     try {
       const id = announcement?.id || null;
       const dismissedId = localStorage.getItem("announcement:dismissed:id");
+      
       setDismissed(dismissedId);
       if (id && announcement?.expiresAt) {
         const exp = Date.parse(announcement.expiresAt);
@@ -249,7 +251,7 @@ export function SideBar(props: { className?: string }) {
         }
       }
     } catch (e) {
-      // ignore storage errors
+      console.error("[SideBar] Error in announcement effect:", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [announcement?.id, announcement?.expiresAt]);
@@ -271,7 +273,6 @@ export function SideBar(props: { className?: string }) {
     const checkMcpStatus = async () => {
       const enabled = await isMcpEnabled();
       setMcpEnabled(enabled);
-      console.log("[SideBar] MCP enabled:", enabled);
     };
     checkMcpStatus();
   }, []);
@@ -369,6 +370,15 @@ export function SideBar(props: { className?: string }) {
               shadow
             />
           )}
+          <IconButton
+            icon={<ImageIcon />}
+            text={shouldNarrow ? undefined : "照片"}
+            className={styles["sidebar-bar-button"]}
+            onClick={() => {
+              navigate(Path.Library, { state: { fromHome: true } });
+            }}
+            shadow
+          />
           <IconButton
             icon={<DiscoveryIcon />}
             text={shouldNarrow ? undefined : Locale.Discovery.Name}

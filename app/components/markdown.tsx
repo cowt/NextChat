@@ -27,6 +27,63 @@ import { useAppConfig } from "../store/config";
 import clsx from "clsx";
 import FoldableContent from "./foldable-content";
 import { MediaOptionSelector } from "./media-option-selector";
+import { OptimizedImage } from "./optimized-image";
+
+// Memoized image component with unified cache management
+const MarkdownImage = React.memo((imgProps: any) => {
+  const [imageSrc, setImageSrc] = React.useState(imgProps.src || "");
+  
+  React.useEffect(() => {
+    const originalSrc = imgProps.src;
+    if (!originalSrc) return;
+    
+    // 通过ImageManager预加载图片，获取缓存的dataUrl
+    const loadImageThroughManager = async () => {
+      try {
+        const { imageManager } = await import("../utils/image-manager");
+        const result = await imageManager.loadImage(originalSrc, {
+          compress: true,
+          preload: true
+        });
+        
+        // 如果有缓存的dataUrl，使用它替换原始URL
+        // 这样原生img标签也能享受ImageManager的缓存
+        if (result.dataUrl && !result.loading && !result.error) {
+          setImageSrc(result.dataUrl);
+        } else {
+          setImageSrc(originalSrc);
+        }
+      } catch (error) {
+        // 降级：直接使用原始URL
+        setImageSrc(originalSrc);
+      }
+    };
+    
+    loadImageThroughManager();
+  }, [imgProps.src]);
+  
+  // 使用原生img标签以确保Markdown的点击事件处理能正常工作
+  return (
+    <img
+      src={imageSrc}
+      alt={imgProps.alt || ""}
+      title={imgProps.title}
+      className={imgProps.className}
+      style={imgProps.style}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+    />
+  );
+}, (prevProps, nextProps) => {
+  // 自定义比较函数，只有src真正变化时才重新渲染
+  return prevProps.src === nextProps.src &&
+         prevProps.alt === nextProps.alt &&
+         prevProps.title === nextProps.title &&
+         prevProps.className === nextProps.className;
+});
+
+MarkdownImage.displayName = 'MarkdownImage';
 
 // placeholder for nested triple backticks inside fold bodies
 const BACKTICK_PLACEHOLDER = "__BACKTICK_TRIPLE_PLACEHOLDER__";
@@ -498,15 +555,7 @@ function _MarkDownContent(props: { content: string; allowXmlFold?: boolean }) {
           }
           return <input {...inputProps} />;
         },
-        img: (imgProps) => (
-          // 优化图片加载：懒加载、异步解码、避免 referrer 引起的 302/签名失效
-          <img
-            {...imgProps}
-            loading={imgProps.loading ?? "lazy"}
-            decoding={imgProps.decoding ?? "async"}
-            referrerPolicy={imgProps.referrerPolicy ?? "no-referrer"}
-          />
-        ),
+        img: MarkdownImage,
         p: (pProps) => <p {...pProps} dir="auto" />,
         a: (aProps) => {
           const href = aProps.href || "";

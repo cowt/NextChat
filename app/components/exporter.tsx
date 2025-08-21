@@ -11,6 +11,7 @@ import {
   showModal,
   showToast,
 } from "./ui-lib";
+import { OptimizedImage } from "./optimized-image";
 import { IconButton } from "./button";
 import {
   copyToClipboard,
@@ -612,14 +613,13 @@ export function ImagePreviewer(props: {
                   defaultShow
                 />
                 {getMessageImages(m).length == 1 && (
-                  <img
+                  <OptimizedImage
                     key={i}
                     src={getMessageImages(m)[0]}
                     alt="message"
                     className={styles["message-image"]}
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
+                    lazy={true}
+                    compress={true}
                   />
                 )}
                 {getMessageImages(m).length > 1 && (
@@ -632,14 +632,13 @@ export function ImagePreviewer(props: {
                     }
                   >
                     {getMessageImages(m).map((src, i) => (
-                      <img
+                      <OptimizedImage
                         key={i}
                         src={src}
                         alt="message"
                         className={styles["message-image-multi"]}
-                        loading="lazy"
-                        decoding="async"
-                        referrerPolicy="no-referrer"
+                        lazy={true}
+                        compress={true}
                       />
                     ))}
                   </div>
