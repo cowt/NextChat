@@ -66,7 +66,9 @@ export function ImageViewer({
   // 同步图片管理器的加载状态
   useEffect(() => {
     setIsLoading(currentImageLoading);
-    setImageLoaded(!currentImageLoading && !currentImageError && !!currentImageDataUrl);
+    setImageLoaded(
+      !currentImageLoading && !currentImageError && !!currentImageDataUrl,
+    );
   }, [currentImageLoading, currentImageError, currentImageDataUrl]);
 
   // 键盘导航
@@ -115,13 +117,13 @@ export function ImageViewer({
     try {
       // 优先使用已经缓存的blob
       let blob = currentImageBlob;
-      
+
       if (!blob) {
         // 如果没有缓存，才发起请求
         const response = await fetch(currentImage);
         blob = await response.blob();
       }
-      
+
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -148,7 +150,22 @@ export function ImageViewer({
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
+    // 如果点击的是 overlay 本身，或者点击的不是图片、按钮等交互元素，就关闭预览
+    const target = e.target as HTMLElement;
+
+    // 如果点击的是 overlay 容器本身
     if (e.target === e.currentTarget) {
+      onClose();
+      return;
+    }
+
+    // 如果点击的是交互元素（图片、按钮等），不关闭预览
+    const isInteractiveElement = target.closest(
+      "img, button, .toolbar-button, .overlay-icon, .loading-placeholder, .error-placeholder",
+    );
+
+    // 如果不是交互元素，说明点击的是空白区域，关闭预览
+    if (!isInteractiveElement) {
       onClose();
     }
   };
@@ -176,11 +193,13 @@ export function ImageViewer({
 
     if (containerRef.current && visible) {
       // 明确设置为非被动模式
-      containerRef.current.addEventListener('wheel', handleWheel, { passive: false });
-      
+      containerRef.current.addEventListener("wheel", handleWheel, {
+        passive: false,
+      });
+
       return () => {
         if (containerRef.current) {
-          containerRef.current.removeEventListener('wheel', handleWheel);
+          containerRef.current.removeEventListener("wheel", handleWheel);
         }
       };
     }
@@ -256,65 +275,58 @@ export function ImageViewer({
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
     >
-      {/* 顶部信息栏移除，避免双层结构 */}
+      {/* 左箭头（透明图标） */}
+      {hasMultipleImages && (
+        <button
+          className={clsx(styles["overlay-icon"], styles["icon-left"])}
+          onClick={goToPrevious}
+          title="上一张 (←)"
+          aria-label="上一张"
+        >
+          <span className={styles["chevron"]}>‹</span>
+        </button>
+      )}
 
-      {/* 图片容器 */}
-      <div className={styles["image-container"]}>
-        {/* 左箭头（透明图标） */}
-        {hasMultipleImages && (
-          <button
-            className={clsx(styles["overlay-icon"], styles["icon-left"])}
-            onClick={goToPrevious}
-            title="上一张 (←)"
-            aria-label="上一张"
-          >
-            <span className={styles["chevron"]}>‹</span>
-          </button>
-        )}
+      {isLoading && (
+        <div className={styles["loading-placeholder"]}>
+          <div className={styles["loading-spinner"]} />
+        </div>
+      )}
+      {currentImageDataUrl && (
+        <img
+          ref={imageRef}
+          src={currentImageDataUrl}
+          alt={`图片 ${currentIndex + 1}`}
+          className={clsx(styles["main-image"], {
+            [styles["image-loaded"]]: imageLoaded,
+          })}
+          style={{
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+            cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
+          }}
+          onLoad={handleImageLoad}
+          onError={handleImageError}
+          onDragStart={(e) => e.preventDefault()}
+        />
+      )}
 
-        {isLoading && (
-          <div className={styles["loading-placeholder"]}>
-            <div className={styles["loading-spinner"]} />
-          </div>
-        )}
-        {currentImageDataUrl && (
-          <img
-            ref={imageRef}
-            src={currentImageDataUrl}
-            alt={`图片 ${currentIndex + 1}`}
-            className={clsx(styles["main-image"], {
-              [styles["image-loaded"]]: imageLoaded,
-            })}
-            style={{
-              transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-              cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
-            }}
-            onLoad={handleImageLoad}
-            onError={handleImageError}
-            onDragStart={(e) => e.preventDefault()}
-          />
-        )}
-        
-        {currentImageError && (
-          <div className={styles["error-placeholder"]}>
-            <div className={styles["error-message"]}>
-              图片加载失败
-            </div>
-          </div>
-        )}
+      {currentImageError && (
+        <div className={styles["error-placeholder"]}>
+          <div className={styles["error-message"]}>图片加载失败</div>
+        </div>
+      )}
 
-        {/* 右箭头（透明图标） */}
-        {hasMultipleImages && (
-          <button
-            className={clsx(styles["overlay-icon"], styles["icon-right"])}
-            onClick={goToNext}
-            title="下一张 (→)"
-            aria-label="下一张"
-          >
-            <span className={styles["chevron"]}>›</span>
-          </button>
-        )}
-      </div>
+      {/* 右箭头（透明图标） */}
+      {hasMultipleImages && (
+        <button
+          className={clsx(styles["overlay-icon"], styles["icon-right"])}
+          onClick={goToNext}
+          title="下一张 (→)"
+          aria-label="下一张"
+        >
+          <span className={styles["chevron"]}>›</span>
+        </button>
+      )}
 
       {/* 右上角关闭按钮 */}
       <div className={styles["top-right"]}>
