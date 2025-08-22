@@ -3,12 +3,21 @@
  * 使用统一的图片管理器，支持缓存、去重、加载状态等
  */
 
-import React, { useState, useRef, CSSProperties, ImgHTMLAttributes } from 'react';
-import { useImage } from '../utils/use-image';
-import LoadingIcon from '../icons/loading.svg';
-import styles from './optimized-image.module.scss';
+import React, {
+  useState,
+  useRef,
+  CSSProperties,
+  ImgHTMLAttributes,
+} from "react";
+import { useImage } from "../utils/use-image";
+import LoadingIcon from "../icons/loading.svg";
+import styles from "./optimized-image.module.scss";
 
-interface OptimizedImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'onLoad' | 'onError'> {
+interface OptimizedImageProps
+  extends Omit<
+    ImgHTMLAttributes<HTMLImageElement>,
+    "src" | "onLoad" | "onError" | "onClick"
+  > {
   /** 图片URL */
   src: string;
   /** 备用图片URL */
@@ -47,7 +56,7 @@ export function OptimizedImage({
   containerClassName,
   style,
   className,
-  alt = '',
+  alt = "",
   ...imgProps
 }: OptimizedImageProps) {
   const [isInView, setIsInView] = useState(!lazy);
@@ -57,30 +66,27 @@ export function OptimizedImage({
 
   // 使用实际的src或备用src
   const actualSrc = useFallback && fallbackSrc ? fallbackSrc : src;
-  
+
   const {
     dataUrl,
     loading,
     error,
     width: imgWidth,
     height: imgHeight,
-  } = useImage(
-    isInView ? actualSrc : undefined,
-    {
-      compress,
-      onLoad: (result) => {
-        onLoad?.(actualSrc, result.width, result.height);
-      },
-      onError: (errorMsg) => {
-        // 如果主图片失败且有备用图片，尝试备用图片
-        if (!useFallback && fallbackSrc) {
-          setUseFallback(true);
-        } else {
-          onError?.(actualSrc, errorMsg);
-        }
-      },
-    }
-  );
+  } = useImage(isInView ? actualSrc : undefined, {
+    compress,
+    onLoad: (result) => {
+      onLoad?.(actualSrc, result.width, result.height);
+    },
+    onError: (errorMsg) => {
+      // 如果主图片失败且有备用图片，尝试备用图片
+      if (!useFallback && fallbackSrc) {
+        setUseFallback(true);
+      } else {
+        onError?.(actualSrc, errorMsg);
+      }
+    },
+  });
 
   // 懒加载的Intersection Observer
   React.useEffect(() => {
@@ -96,8 +102,8 @@ export function OptimizedImage({
       },
       {
         threshold: 0.1,
-        rootMargin: '50px',
-      }
+        rootMargin: "50px",
+      },
     );
 
     if (containerRef.current) {
@@ -139,9 +145,7 @@ export function OptimizedImage({
     if (error) {
       return (
         <div className={styles.error}>
-          <div className={styles.errorMessage}>
-            {alt || '图片加载失败'}
-          </div>
+          <div className={styles.errorMessage}>{alt || "图片加载失败"}</div>
         </div>
       );
     }
@@ -172,7 +176,7 @@ export function OptimizedImage({
   return (
     <div
       ref={containerRef}
-      className={`${styles.container} ${containerClassName || ''}`}
+      className={`${styles.container} ${containerClassName || ""}`}
       style={containerStyle}
     >
       {renderContent()}
@@ -203,14 +207,14 @@ export function OptimizedImageGrid({
   style,
 }: OptimizedImageGridProps) {
   const gridStyle: CSSProperties = {
-    display: 'grid',
+    display: "grid",
     gridTemplateColumns: `repeat(${columns}, 1fr)`,
     gap: `${gap}px`,
     ...style,
   };
 
   return (
-    <div className={`${styles.grid} ${className || ''}`} style={gridStyle}>
+    <div className={`${styles.grid} ${className || ""}`} style={gridStyle}>
       {images.map((src, index) => (
         <OptimizedImage
           key={src}

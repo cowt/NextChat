@@ -1,77 +1,122 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import styles from './library.module.scss';
-import { IconButton } from './button';
-import { Path } from '../constant';
-import { photoCollector } from '../utils/photo-collector';
-import { ImageViewer } from './image-viewer';
+import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import styles from "./library.module.scss";
+import { IconButton } from "./button";
+import { Path } from "../constant";
+import { photoCollector } from "../utils/photo-collector";
+import { PhotoInfo } from "../utils/photo-storage";
+import { ImageViewer } from "./image-viewer";
+import { MasonryLayout } from "./masonry-layout";
 
 // Icons
-import CloseIcon from '../icons/close.svg';
-import ImageIcon from '../icons/image.svg';
-import ReloadIcon from '../icons/reload.svg';
+import CloseIcon from "../icons/close.svg";
+import ImageIcon from "../icons/image.svg";
+import ReloadIcon from "../icons/reload.svg";
 
 export function Library() {
   const navigate = useNavigate();
-  const [images, setImages] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<PhotoInfo[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
   const [viewerVisible, setViewerVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [stats, setStats] = useState({
-    totalPhotos: 0,
+    total: 0,
     userPhotos: 0,
     botPhotos: 0,
     sessionsWithPhotos: 0,
-    initialized: false,
+    lastUpdated: 0,
   });
 
-  // 初始化照片收集器并定期更新
-  useEffect(() => {
-    const initializeAndUpdate = async () => {
-      setIsLoading(true);
-      
-      // 初始化照片收集器
-      await photoCollector.initialize();
-      
-      // 更新图片列表和统计信息
-      const updateData = () => {
-        const photoUrls = photoCollector.getAllPhotoUrls();
-        const stats = photoCollector.getStats();
-        setImages(photoUrls);
-        setStats(stats);
-      };
-      
-      updateData();
-      setIsLoading(false);
-      
-      // 定期更新（较少频率，因为现在是主动收集）
-      const interval = setInterval(updateData, 5000);
-      
-      return () => clearInterval(interval);
-    };
+  // 加载第一页照片
+  const loadPhotos = useCallback(async (reset = false) => {
+    try {
+      if (reset) {
+        setIsLoading(true);
+        photoCollector.resetPagination();
+      } else {
+        setIsLoadingMore(true);
+      }
 
-    initializeAndUpdate();
+      // 设置超时机制，避免无限等待
+      const initPromise = photoCollector.initialize();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("初始化超时")), 10000),
+      );
+
+      await Promise.race([initPromise, timeoutPromise]);
+
+      let newPhotos: PhotoInfo[] = [];
+
+      if (reset) {
+        try {
+          newPhotos = await photoCollector.getPhotos({ limit: 50, offset: 0 });
+        } catch (error) {
+          console.warn("[Library] 常规获取失败，尝试紧急回退模式:", error);
+          newPhotos = await photoCollector.getPhotosFromSessions();
+        }
+      } else {
+        newPhotos = await photoCollector.loadMore();
+      }
+
+      const stats = await photoCollector.getStats();
+
+      if (reset) {
+        setPhotos(newPhotos);
+      } else {
+        setPhotos((prevPhotos) => [...prevPhotos, ...newPhotos]);
+      }
+
+      setStats(stats);
+      setHasMore(newPhotos.length === 50); // 如果返回的数量少于限制，说明没有更多了
+    } catch (error) {
+      console.error("[Library] 加载照片失败:", error);
+
+      // 即使失败也要停止加载状态
+      if (reset) {
+        setPhotos([]);
+        setStats({
+          total: 0,
+          userPhotos: 0,
+          botPhotos: 0,
+          sessionsWithPhotos: 0,
+          lastUpdated: Date.now(),
+        });
+      }
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
   }, []);
 
-  // 手动刷新
-  const handleRefresh = async () => {
-    setIsLoading(true);
-    await photoCollector.refresh();
-    const photoUrls = photoCollector.getAllPhotoUrls();
-    setImages(photoUrls);
-    setStats(photoCollector.getStats());
-    setIsLoading(false);
-  };
+  // 初始化加载
+  useEffect(() => {
+    loadPhotos(true);
+  }, [loadPhotos]);
 
-  const handleImageClick = (index: number) => {
+  // 手动刷新
+  const handleRefresh = useCallback(async () => {
+    await photoCollector.refresh();
+    await loadPhotos(true);
+  }, [loadPhotos]);
+
+  // 加载更多照片
+  const handleLoadMore = useCallback(async () => {
+    if (!isLoadingMore && hasMore) {
+      await loadPhotos(false);
+    }
+  }, [isLoadingMore, hasMore, loadPhotos]);
+
+  const handleImageClick = useCallback((index: number) => {
     setSelectedImageIndex(index);
     setViewerVisible(true);
-  };
+  }, []);
 
-  const closeViewer = () => {
+  const closeViewer = useCallback(() => {
     setViewerVisible(false);
     setSelectedImageIndex(0);
-  };
+  }, []);
 
   return (
     <div className={styles.libraryContainer}>
@@ -79,9 +124,9 @@ export function Library() {
         <div className="window-header-title">
           <div className="window-header-main-title">
             <ImageIcon className={styles.titleIcon} />
-            照片 {stats.initialized && `(${stats.totalPhotos})`}
+            照片 {stats.total > 0 && `(${stats.total})`}
           </div>
-          {stats.initialized && (
+          {stats.total > 0 && (
             <div className="window-header-sub-title">
               来自 {stats.sessionsWithPhotos} 个对话
             </div>
@@ -115,37 +160,22 @@ export function Library() {
             <div className={styles.loadingText}>正在收集照片...</div>
           </div>
         ) : (
-          <div className={styles.photoWall}>
-            {images.map((imageUrl, index) => (
-              <div 
-                key={`${imageUrl}-${index}`}
-                className={styles.photoItem}
-                onClick={() => handleImageClick(index)}
-              >
-                <img 
-                  src={imageUrl} 
-                  alt=""
-                  className={styles.photo}
-                  loading="lazy"
-                />
-              </div>
-            ))}
-            {images.length === 0 && !isLoading && (
-              <div className={styles.emptyState}>
-                <ImageIcon className={styles.emptyIcon} />
-                <div className={styles.emptyText}>暂无照片</div>
-                <div className={styles.emptySubText}>
-                  {stats.initialized ? '当前对话中没有图片' : '正在初始化...'}
-                </div>
-              </div>
-            )}
-          </div>
+          <MasonryLayout
+            photos={photos}
+            onImageClick={handleImageClick}
+            onLoadMore={handleLoadMore}
+            hasMore={hasMore}
+            loading={isLoadingMore}
+            className={styles.photoWall}
+            columns={8}
+            gap={6}
+          />
         )}
       </div>
 
-      {viewerVisible && images.length > 0 && (
+      {viewerVisible && photos.length > 0 && (
         <ImageViewer
-          images={images}
+          images={photos.map((photo) => photo.url)}
           initialIndex={selectedImageIndex}
           visible={viewerVisible}
           onClose={closeViewer}

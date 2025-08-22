@@ -242,7 +242,7 @@ export function SideBar(props: { className?: string }) {
     try {
       const id = announcement?.id || null;
       const dismissedId = localStorage.getItem("announcement:dismissed:id");
-      
+
       setDismissed(dismissedId);
       if (id && announcement?.expiresAt) {
         const exp = Date.parse(announcement.expiresAt);
@@ -372,7 +372,7 @@ export function SideBar(props: { className?: string }) {
           )}
           <IconButton
             icon={<ImageIcon />}
-            text={shouldNarrow ? undefined : "照片"}
+            text={shouldNarrow ? undefined : "图片库"}
             className={styles["sidebar-bar-button"]}
             onClick={() => {
               navigate(Path.Library, { state: { fromHome: true } });

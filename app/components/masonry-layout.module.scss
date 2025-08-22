@@ -1,0 +1,220 @@
+.masonryContainer {
+  width: 100%;
+  padding: 8px; // 进一步减少内边距以最大化利用空间
+  background: var(--white);
+  box-sizing: border-box;
+}
+
+.masonryGrid {
+  width: 100%;
+  min-height: 200px;
+}
+
+.photoItem {
+  border-radius: 6px; // 稍微减小圆角
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  
+  &:hover {
+    transform: translateY(-2px) scale(1.02); // 添加轻微放大效果
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    z-index: 10;
+  }
+}
+
+.photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+
+  .photoItem:hover & {
+    transform: scale(1.02);
+  }
+
+  &.loaded {
+    opacity: 1;
+  }
+}
+
+.photoInfo {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  color: white;
+  padding: 8px;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+
+  .photoItem:hover & {
+    opacity: 1;
+  }
+}
+
+.dimensions {
+  font-weight: 500;
+}
+
+.duplicateIndicator {
+  margin-left: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.loadingOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(2px);
+}
+
+.loadingSpinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loadMoreTrigger {
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.loadingIndicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--gray-600);
+  font-size: 14px;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--gray-200);
+  border-top: 3px solid var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  text-align: center;
+  color: var(--gray-500);
+}
+
+.emptyIcon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.emptyText {
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--gray-600);
+}
+
+.emptySubText {
+  font-size: 14px;
+  color: var(--gray-500);
+}
+
+
+
+// 响应式设计
+@media (max-width: 768px) {
+  .masonryContainer {
+    padding: 12px;
+  }
+  
+  .photoInfo {
+    padding: 6px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .masonryContainer {
+    padding: 8px;
+  }
+  
+  .photoItem {
+    border-radius: 6px;
+  }
+  
+  .emptyIcon {
+    font-size: 48px;
+  }
+  
+  .emptyText {
+    font-size: 16px;
+  }
+  
+  .emptySubText {
+    font-size: 13px;
+  }
+}
+
+// 深色模式
+@media (prefers-color-scheme: dark) {
+  .masonryContainer {
+    background: var(--black);
+  }
+  
+  .photoItem {
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.1);
+    
+    &:hover {
+      box-shadow: 0 8px 25px rgba(255, 255, 255, 0.15);
+    }
+  }
+  
+  .loadingIndicator {
+    color: var(--gray-400);
+  }
+  
+  .spinner {
+    border-color: var(--gray-700);
+    border-top-color: var(--primary-color);
+  }
+  
+  .emptyState {
+    color: var(--gray-400);
+  }
+  
+  .emptyText {
+    color: var(--gray-300);
+  }
+}
