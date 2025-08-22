@@ -247,7 +247,7 @@ export function MasonryLayout({
           {loading && (
             <div className={styles.loadingIndicator}>
               <div className={styles.spinner} />
-              <span>加载更多图片...</span>
+              <span>正在加载...</span>
             </div>
           )}
         </div>

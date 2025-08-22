@@ -30,6 +30,7 @@ import { type ClientApi, getClientApi } from "../client/api";
 import { useAccessStore } from "../store";
 import clsx from "clsx";
 import { initializeMcpSystem, isMcpEnabled } from "../mcp/actions";
+import { photoCollector } from "../utils/photo-collector";
 
 export function Loading(props: { noLogo?: boolean }) {
   return (
@@ -258,6 +259,16 @@ export function Home() {
       }
     };
     initMcp();
+
+    // 提前初始化照片收集器，保证新消息图片能被增量收集
+    const initPhotos = async () => {
+      try {
+        await photoCollector.initialize();
+      } catch (e) {
+        console.warn("[PhotoCollector] early initialize failed:", e);
+      }
+    };
+    initPhotos();
   }, []);
 
   if (!useHasHydrated()) {

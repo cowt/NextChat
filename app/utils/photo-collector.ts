@@ -268,6 +268,16 @@ class PhotoCollector {
 
       // 预加载新图片
       await this.preloadBatch(savedPhotos.map((p) => p.url));
+
+      // 通知前端有新照片（用于库页面即时更新）
+      try {
+        if (typeof window !== "undefined") {
+          const event = new CustomEvent("photoCollector:newPhotos", {
+            detail: savedPhotos,
+          });
+          window.dispatchEvent(event);
+        }
+      } catch {}
     }
   }
 
@@ -276,7 +286,6 @@ class PhotoCollector {
    */
   async getPhotos(query: PhotoQuery = {}): Promise<PhotoInfo[]> {
     try {
-      await this.initialize();
       const photos = await photoStorage.getPhotos(query);
       return photos;
     } catch (error) {
@@ -375,7 +384,7 @@ class PhotoCollector {
    */
   async loadMore(): Promise<PhotoInfo[]> {
     this.currentPage += 1;
-    await this.loadPage(this.currentPage);
+    await this.loadPage(this.currentPage); // 确保这一页的数据也加载到内存
 
     const photos = await photoStorage.getPhotos({
       limit: this.PAGE_SIZE,
@@ -384,7 +393,7 @@ class PhotoCollector {
       sortOrder: "desc",
     });
 
-    return photos;
+    return photos; // 返回当前页的新照片
   }
 
   /**
