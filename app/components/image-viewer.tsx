@@ -161,7 +161,7 @@ export function ImageViewer({
 
     // 如果点击的是交互元素（图片、按钮等），不关闭预览
     const isInteractiveElement = target.closest(
-      "img, button, .toolbar-button, .overlay-icon, .loading-placeholder, .error-placeholder",
+      "img, button, .toolbar-button, .overlay-icon, .loading-placeholder, .error-placeholder, .nav-hotzone",
     );
 
     // 如果不是交互元素，说明点击的是空白区域，关闭预览
@@ -275,6 +275,31 @@ export function ImageViewer({
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
     >
+      {hasMultipleImages && (
+        <>
+          <button
+            className={clsx(styles["nav-hotzone"], styles["left-zone"])}
+            onClick={(e) => {
+              e.stopPropagation();
+              goToPrevious();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            aria-label="上一张 热区"
+            title="上一张"
+          />
+          <button
+            className={clsx(styles["nav-hotzone"], styles["right-zone"])}
+            onClick={(e) => {
+              e.stopPropagation();
+              goToNext();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            aria-label="下一张 热区"
+            title="下一张"
+          />
+        </>
+      )}
+
       {/* 左箭头（透明图标） */}
       {hasMultipleImages && (
         <button

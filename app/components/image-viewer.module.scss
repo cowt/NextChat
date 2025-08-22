@@ -162,7 +162,7 @@
 .image-wrapper { display: contents; }
 
 .main-image {
-  width: 100%;
+  width: auto; // 允许图片根据自身比例占宽，保留可点击空白
   height: auto;
   max-width: 100%;
   max-height: calc(100vh - 120px);
@@ -272,6 +272,27 @@
 
 .icon-left { left: 20px; }
 .icon-right { right: 20px; }
+
+// 左右大面积翻页热区（透明覆盖）
+.nav-hotzone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 24%; // 默认占宽 24%
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  z-index: 8; // 低于图标，高于背景
+  cursor: pointer;
+}
+
+.left-zone { left: 0; }
+.right-zone { right: 0; }
+
+@media (max-width: 768px) {
+  .nav-hotzone { width: 28%; } // 移动端热区更宽
+}
 
 // 底部工具栏 - 所有按钮集中
 .bottom-toolbar {

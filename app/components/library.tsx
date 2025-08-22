@@ -155,10 +155,18 @@ export function Library() {
 
       <div className={styles.library}>
         {isLoading ? (
-          <div className={styles.loadingState}>
-            <div className={styles.loadingSpinner} />
-            <div className={styles.loadingText}>正在收集照片...</div>
-          </div>
+          <>
+            <div className={styles.loadingState}>
+              <div className={styles.loadingSpinner} />
+              <div className={styles.loadingText}>正在收集照片...</div>
+            </div>
+            {/* 瀑布流骨架屏 */}
+            <div className={styles.skeletonGrid}>
+              {Array.from({ length: 24 }).map((_, i) => (
+                <div key={i} className={styles.skeletonItem} />
+              ))}
+            </div>
+          </>
         ) : (
           <MasonryLayout
             photos={photos}

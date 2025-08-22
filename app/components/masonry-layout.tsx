@@ -176,13 +176,15 @@ export function MasonryLayout({
   );
 
   const renderPhoto = useCallback(
-    (photo: PhotoItem) => {
+    (photo: PhotoItem, index: number) => {
       const style: React.CSSProperties = {
         position: "absolute",
         left: photo.column * (columnWidth + gap),
         top: photo.top,
         width: columnWidth,
         height: photo.calculatedHeight,
+        // 逐帧错峰进入动画
+        animationDelay: `${Math.min(index, 12) * 40}ms`,
       };
 
       return (
@@ -236,7 +238,7 @@ export function MasonryLayout({
           height: totalHeight,
         }}
       >
-        {layoutedPhotos.map(renderPhoto)}
+        {layoutedPhotos.map((p, idx) => renderPhoto(p, idx))}
       </div>
 
       {/* 加载更多触发器 */}

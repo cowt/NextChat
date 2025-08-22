@@ -79,6 +79,27 @@
   color: var(--gray-600);
 }
 
+// 进入页面骨架屏
+.skeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  padding: 8px;
+}
+
+.skeletonItem {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--gray-100), var(--gray-200), var(--gray-100));
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.2s ease-in-out infinite;
+  aspect-ratio: 1/1;
+}
+
+@keyframes skeletonShimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
