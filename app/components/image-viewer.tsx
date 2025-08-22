@@ -16,6 +16,7 @@ export interface ImageViewerProps {
   visible: boolean;
   onClose: () => void;
   className?: string;
+  onImageChange?: (index: number) => void; // 图片切换回调
 }
 
 export function ImageViewer({
@@ -24,6 +25,7 @@ export function ImageViewer({
   visible,
   onClose,
   className,
+  onImageChange,
 }: ImageViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +53,7 @@ export function ImageViewer({
     ? images[(currentIndex - 1 + images.length) % images.length]
     : undefined;
 
-  // 使用图片管理器加载当前图片
+  // 使用图片管理器加载当前图片（只在预览时加载高清图片）
   const {
     dataUrl: currentImageDataUrl,
     loading: currentImageLoading,
@@ -64,18 +66,20 @@ export function ImageViewer({
     enabled: visible, // 只在可见时加载
   });
 
-  // 暂时禁用预加载，避免网络压力
-  // useImage(visible && nextImage ? nextImage : undefined, {
-  //   compress: false,
-  //   forceReload: false,
-  //   delay: 100, // 延迟100ms预加载，避免阻塞当前图片
-  // });
+  // 启用邻近预加载，提升浏览体验（只在预览时）
+  useImage(visible && nextImage ? nextImage : undefined, {
+    compress: false,
+    forceReload: false,
+    delay: 100, // 延迟100ms预加载，避免阻塞当前图片
+    enabled: visible, // 只在预览时预加载
+  });
 
-  // useImage(visible && prevImage ? prevImage : undefined, {
-  //   compress: false,
-  //   forceReload: false,
-  //   delay: 200, // 延迟200ms预加载上一张
-  // });
+  useImage(visible && prevImage ? prevImage : undefined, {
+    compress: false,
+    forceReload: false,
+    delay: 200, // 延迟200ms预加载上一张
+    enabled: visible, // 只在预览时预加载
+  });
 
   // 重置状态当组件变为可见时
   useEffect(() => {
@@ -86,12 +90,35 @@ export function ImageViewer({
     }
   }, [visible, initialIndex, images]);
 
+  // 优化状态同步逻辑：当 currentImage 变化时重置加载状态
+  useEffect(() => {
+    setImageLoaded(false);
+    setIsLoading(false);
+  }, [currentImage]);
+
+  // 额外优化：当 dataUrl 突然出现时（比如从缓存快速加载），立即设置加载完成
+  useEffect(() => {
+    if (currentImageDataUrl && !currentImageLoading && !currentImageError) {
+      // 使用 setTimeout 确保状态更新在下一个事件循环中执行
+      const timer = setTimeout(() => {
+        setImageLoaded(true);
+        setIsLoading(false);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [currentImageDataUrl, currentImageLoading, currentImageError]);
+
   // 同步图片管理器的加载状态
   useEffect(() => {
     setIsLoading(currentImageLoading);
-    setImageLoaded(
-      !currentImageLoading && !currentImageError && !!currentImageDataUrl,
-    );
+
+    // 当 dataUrl 存在且不在加载状态时，立即设置 imageLoaded 为 true
+    if (currentImageDataUrl && !currentImageLoading && !currentImageError) {
+      setImageLoaded(true);
+    } else if (currentImageError) {
+      // 如果有错误，确保加载状态为 false
+      setImageLoaded(false);
+    }
   }, [currentImageLoading, currentImageError, currentImageDataUrl]);
 
   // 快速加载备用方案：如果图片管理器加载超过1秒，使用原生加载
@@ -159,13 +186,21 @@ export function ImageViewer({
 
   const goToPrevious = useCallback(() => {
     if (!hasMultipleImages) return;
-    setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
-  }, [hasMultipleImages, images.length]);
+    setCurrentIndex((prev) => {
+      const newIndex = prev === 0 ? images.length - 1 : prev - 1;
+      onImageChange?.(newIndex);
+      return newIndex;
+    });
+  }, [hasMultipleImages, images.length, onImageChange]);
 
   const goToNext = useCallback(() => {
     if (!hasMultipleImages) return;
-    setCurrentIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
-  }, [hasMultipleImages, images.length]);
+    setCurrentIndex((prev) => {
+      const newIndex = prev === images.length - 1 ? 0 : prev + 1;
+      onImageChange?.(newIndex);
+      return newIndex;
+    });
+  }, [hasMultipleImages, images.length, onImageChange]);
 
   const downloadCurrentImage = useCallback(async () => {
     if (!currentImage) return;
@@ -368,15 +403,11 @@ export function ImageViewer({
         </button>
       )}
 
-      {isLoading && (
-        <div className={styles["loading-placeholder"]}>
-          <div className={styles["loading-spinner"]} />
-        </div>
-      )}
-      {currentImageDataUrl && (
+      {/* 改进的图片渲染条件：图片现在会在 currentImageDataUrl 或 currentImage 任一存在时渲染 */}
+      {(currentImageDataUrl || currentImage) && (
         <img
           ref={imageRef}
-          src={currentImageDataUrl}
+          src={currentImageDataUrl || currentImage}
           alt={`图片 ${currentIndex + 1}`}
           className={clsx(styles["main-image"], {
             [styles["image-loaded"]]: imageLoaded,
@@ -391,7 +422,15 @@ export function ImageViewer({
         />
       )}
 
-      {currentImageError && (
+      {/* 加载指示器只在没有 dataUrl 且正在加载时显示 */}
+      {!currentImageDataUrl && isLoading && (
+        <div className={styles["loading-placeholder"]}>
+          <div className={styles["loading-spinner"]} />
+        </div>
+      )}
+
+      {/* 错误提示只在没有 dataUrl 且有错误时显示 */}
+      {!currentImageDataUrl && currentImageError && (
         <div className={styles["error-placeholder"]}>
           <div className={styles["error-message"]}>图片加载失败</div>
         </div>
