@@ -37,7 +37,7 @@ interface ImageCacheItem {
 class ImageManager {
   private cache = new Map<string, ImageCacheItem>();
   private loadingPromises = new Map<string, Promise<ImageLoadResult>>();
-  
+
   // 配置选项
   private readonly maxCacheSize = 100; // 最大缓存数量
   private readonly maxImageSize = 256 * 1024; // 最大图片压缩大小 256KB
@@ -46,20 +46,30 @@ class ImageManager {
 
   constructor() {
     // 定期清理超出限制的缓存（但不基于时间过期）
-    setInterval(() => {
-      this.limitCacheSize();
-    }, 1000 * 60 * 5); // 每5分钟清理一次
+    setInterval(
+      () => {
+        this.limitCacheSize();
+      },
+      1000 * 60 * 5,
+    ); // 每5分钟清理一次
   }
 
   /**
    * 加载图片（带缓存和去重）
    */
-  async loadImage(url: string, options?: {
-    forceReload?: boolean;
-    compress?: boolean;
-    preload?: boolean;
-  }): Promise<ImageLoadResult> {
-    const { forceReload = false, compress = true, preload = false } = options || {};
+  async loadImage(
+    url: string,
+    options?: {
+      forceReload?: boolean;
+      compress?: boolean;
+      preload?: boolean;
+    },
+  ): Promise<ImageLoadResult> {
+    const {
+      forceReload = false,
+      compress = true,
+      preload = false,
+    } = options || {};
 
     // 如果不是强制重新加载，先检查缓存
     if (!forceReload) {
@@ -77,7 +87,7 @@ class ImageManager {
             height: cached.height,
           };
         }
-        
+
         // 如果正在加载，返回加载中的Promise
         if (cached.loading && cached.loadPromise) {
           return cached.loadPromise;
@@ -88,14 +98,17 @@ class ImageManager {
     // 双重检查锁定模式，确保并发时不会重复请求
     let loadingPromise = this.loadingPromises.get(url);
     if (loadingPromise) {
-
       return loadingPromise;
     }
 
     // 再次检查缓存，避免竞争条件
     const cachedAgain = this.cache.get(url);
-    if (cachedAgain && cachedAgain.dataUrl && !cachedAgain.error && !forceReload) {
-
+    if (
+      cachedAgain &&
+      cachedAgain.dataUrl &&
+      !cachedAgain.error &&
+      !forceReload
+    ) {
       return {
         url,
         dataUrl: cachedAgain.dataUrl,
@@ -121,7 +134,7 @@ class ImageManager {
 
     try {
       const result = await loadingPromise;
-      
+
       // 更新缓存
       this.cache.set(url, {
         url,
@@ -137,8 +150,8 @@ class ImageManager {
 
       return result;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+
       // 更新缓存错误状态
       this.cache.set(url, {
         url,
@@ -156,7 +169,6 @@ class ImageManager {
       // 清理加载Promise
       this.loadingPromises.delete(url);
 
-      
       // 限制缓存大小
       this.limitCacheSize();
     }
@@ -166,24 +178,24 @@ class ImageManager {
    * 实际加载图片的方法
    */
   private async doLoadImage(
-    url: string, 
-    compress: boolean, 
-    preload: boolean
+    url: string,
+    compress: boolean,
+    preload: boolean,
   ): Promise<ImageLoadResult> {
     let attempt = 0;
-    
+
     while (attempt < this.retryCount) {
       try {
         // 根据URL类型决定如何处理
         const isCacheUrl = url.includes(CACHE_URL_PREFIX);
         const isLocalUrl = url.startsWith(window.location.origin);
-        const isDataUrl = url.startsWith('data:image/');
-        
+        const isDataUrl = url.startsWith("data:image/");
+
         // 如果是base64图片，直接处理，不走网络请求
         if (isDataUrl) {
           const response = await fetch(url);
           const blob = await response.blob();
-          
+
           let dataUrl: string;
           if (compress && blob.size > 256 * 1024) {
             // 使用压缩函数，直接返回dataUrl
@@ -191,9 +203,9 @@ class ImageManager {
           } else {
             dataUrl = await this.blobToDataUrl(blob);
           }
-          
+
           const dimensions = await this.getImageDimensions(blob);
-          
+
           return {
             url,
             dataUrl,
@@ -204,13 +216,42 @@ class ImageManager {
             height: dimensions.height,
           };
         }
-        
+
         let fetchUrl = url;
         let fetchOptions: RequestInit = {
           method: "GET",
           signal: AbortSignal.timeout(30000), // 30秒超时
         };
-        
+
+        if (isCacheUrl) {
+          // 优先从 CacheStorage 直接读取，避免在 SW 未接管时产生 404
+          try {
+            if (typeof caches !== "undefined") {
+              // 等待 SW 就绪（最多 3s），提高命中率
+              if (
+                typeof navigator !== "undefined" &&
+                navigator.serviceWorker &&
+                !navigator.serviceWorker.controller
+              ) {
+                await Promise.race([
+                  navigator.serviceWorker.ready,
+                  new Promise((r) => setTimeout(r, 3000)),
+                ]);
+              }
+              const cached = await caches.match(fetchUrl);
+              if (cached) {
+                const blob = await cached.blob();
+                const { width, height } = await this.getImageDimensions(blob);
+                const dataUrl =
+                  compress && blob.size > this.maxImageSize
+                    ? await compressImage(blob, this.maxImageSize)
+                    : await this.blobToDataUrl(blob);
+                return { url, dataUrl, blob, loading: false, width, height };
+              }
+            }
+          } catch (_) {}
+        }
+
         if (isCacheUrl || isLocalUrl) {
           // 本地缓存或同域请求，直接访问
           fetchOptions.mode = "cors";
@@ -221,27 +262,32 @@ class ImageManager {
           fetchOptions.mode = "cors";
           fetchOptions.credentials = "include";
         }
-        
+
         const response = await fetch(fetchUrl, fetchOptions);
 
         if (!response.ok) {
-          // 对于404错误，如果是缓存URL，尝试直接访问原URL
+          // 对于 404 的缓存地址，直接失败回退：
+          // 1) 如果有 original url（通过 URLSearchParams or 已知前缀），改为原地址重试
+          // 2) 否则直接抛错让上层吞掉
           if (response.status === 404 && isCacheUrl) {
-            console.warn(`[ImageManager] Cache miss for ${url}, will not retry cache URL`);
+            console.warn(`[ImageManager] Cache miss for ${url}`);
+            // 如果 /api/cache/xxx.png 这种直接文件名，无法恢复原始 URL，则直接抛错给外层
             throw new Error(`Cache not found: ${response.status}`);
           }
-          
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
         const blob = await response.blob();
-        
+
         // 获取图片尺寸
         const { width, height } = await this.getImageDimensions(blob);
-        
+
         let dataUrl: string;
-        
-        if (compress && (blob.size > this.maxImageSize || url.includes(CACHE_URL_PREFIX))) {
+
+        if (
+          compress &&
+          (blob.size > this.maxImageSize || url.includes(CACHE_URL_PREFIX))
+        ) {
           // 需要压缩
           dataUrl = await compressImage(blob, this.maxImageSize);
         } else {
@@ -257,19 +303,27 @@ class ImageManager {
           width,
           height,
         };
-        
       } catch (error) {
         attempt++;
-        console.warn(`[ImageManager] Load failed (attempt ${attempt}/${this.retryCount}):`, url, error);
-        
+        console.warn(
+          `[ImageManager] Load failed (attempt ${attempt}/${this.retryCount}):`,
+          url,
+          error,
+        );
+
         // 对于缓存404错误，不进行重试
-        if (error instanceof Error && error.message.includes('Cache not found')) {
+        if (
+          error instanceof Error &&
+          error.message.includes("Cache not found")
+        ) {
           throw error;
         }
-        
+
         if (attempt < this.retryCount) {
           // 等待后重试
-          await new Promise(resolve => setTimeout(resolve, this.retryDelay * attempt));
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.retryDelay * attempt),
+          );
         } else {
           // 最后一次尝试失败，抛出错误
           throw error;
@@ -277,13 +331,15 @@ class ImageManager {
       }
     }
 
-    throw new Error('Failed to load image after retries');
+    throw new Error("Failed to load image after retries");
   }
 
   /**
    * 获取图片尺寸
    */
-  private getImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+  private getImageDimensions(
+    blob: Blob,
+  ): Promise<{ width: number; height: number }> {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
@@ -312,14 +368,13 @@ class ImageManager {
    * 预加载图片列表
    */
   async preloadImages(urls: string[]): Promise<void> {
-    const promises = urls.map(url => 
-      this.loadImage(url, { preload: true, compress: true })
-        .catch(error => {
-          console.warn(`[ImageManager] Preload failed:`, url, error);
-          return null;
-        })
+    const promises = urls.map((url) =>
+      this.loadImage(url, { preload: true, compress: true }).catch((error) => {
+        console.warn(`[ImageManager] Preload failed:`, url, error);
+        return null;
+      }),
     );
-    
+
     await Promise.allSettled(promises);
   }
 
@@ -354,10 +409,6 @@ class ImageManager {
     }
   }
 
-
-
-
-
   /**
    * 限制缓存大小
    */
@@ -365,9 +416,10 @@ class ImageManager {
     if (this.cache.size <= this.maxCacheSize) return;
 
     // 按时间戳排序，删除最旧的缓存
-    const entries = Array.from(this.cache.entries())
-      .sort((a, b) => a[1].timestamp - b[1].timestamp);
-    
+    const entries = Array.from(this.cache.entries()).sort(
+      (a, b) => a[1].timestamp - b[1].timestamp,
+    );
+
     const deleteCount = this.cache.size - this.maxCacheSize;
     for (let i = 0; i < deleteCount; i++) {
       this.cache.delete(entries[i][0]);
@@ -378,14 +430,18 @@ class ImageManager {
    * 获取缓存统计信息
    */
   getCacheStats() {
-    const totalSize = Array.from(this.cache.values())
-      .reduce((sum, item) => sum + (item.size || 0), 0);
-    
-    const loadingCount = Array.from(this.cache.values())
-      .filter(item => item.loading).length;
-    
-    const errorCount = Array.from(this.cache.values())
-      .filter(item => item.error).length;
+    const totalSize = Array.from(this.cache.values()).reduce(
+      (sum, item) => sum + (item.size || 0),
+      0,
+    );
+
+    const loadingCount = Array.from(this.cache.values()).filter(
+      (item) => item.loading,
+    ).length;
+
+    const errorCount = Array.from(this.cache.values()).filter(
+      (item) => item.error,
+    ).length;
 
     return {
       totalCount: this.cache.size,
@@ -398,7 +454,7 @@ class ImageManager {
 
   getAllCachedImages() {
     return Array.from(this.cache.values())
-      .filter(item => item.dataUrl && !item.error)
+      .filter((item) => item.dataUrl && !item.error)
       .sort((a, b) => b.timestamp - a.timestamp); // 按时间倒序排列
   }
 }
@@ -408,11 +464,10 @@ export const imageManager = new ImageManager();
 
 // 兼容性API，保持与原有代码的兼容
 export function cacheImageToBase64Image(imageUrl: string): Promise<string> {
-  return imageManager.loadImage(imageUrl, { compress: true })
-    .then(result => {
-      if (result.error) {
-        throw new Error(result.error);
-      }
-      return result.dataUrl || imageUrl;
-    });
+  return imageManager.loadImage(imageUrl, { compress: true }).then((result) => {
+    if (result.error) {
+      throw new Error(result.error);
+    }
+    return result.dataUrl || imageUrl;
+  });
 }

@@ -59,6 +59,7 @@ export function HighResImage({
           setHighResLoaded(true);
           onError?.(new Error("High resolution image failed to load"));
         };
+        // 若是 /api/cache/* 地址，直接尝试加载；失败时不再报错干扰显示
         preloadRef.current.src = src;
       };
 
