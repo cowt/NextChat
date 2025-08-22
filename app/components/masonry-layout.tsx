@@ -153,7 +153,10 @@ export function MasonryLayout({
           onLoadMore();
         }
       },
-      { threshold: 0.1 },
+      {
+        threshold: 0.1,
+        rootMargin: "200px 0px", // 提前200px触发，提高响应速度
+      },
     );
 
     observerRef.current.observe(loadMoreRef.current);
@@ -189,7 +192,6 @@ export function MasonryLayout({
 
       return (
         <div
-          key={photo.id}
           className={styles.photoItem}
           style={style}
           onClick={() => handleImageClick(photo)}
@@ -238,7 +240,11 @@ export function MasonryLayout({
           height: totalHeight,
         }}
       >
-        {layoutedPhotos.map((p, idx) => renderPhoto(p, idx))}
+        {layoutedPhotos.map((p, idx) => (
+          <React.Fragment key={`${p.id}-${idx}`}>
+            {renderPhoto(p, idx)}
+          </React.Fragment>
+        ))}
       </div>
 
       {/* 加载更多触发器 */}

@@ -43,6 +43,14 @@ export function ImageViewer({
   const currentImage = images[currentIndex];
   const hasMultipleImages = images.length > 1;
 
+  // 预加载下一张图片
+  const nextImage = hasMultipleImages
+    ? images[(currentIndex + 1) % images.length]
+    : undefined;
+  const prevImage = hasMultipleImages
+    ? images[(currentIndex - 1 + images.length) % images.length]
+    : undefined;
+
   // 使用图片管理器加载当前图片
   const {
     dataUrl: currentImageDataUrl,
@@ -52,7 +60,22 @@ export function ImageViewer({
   } = useImage(visible ? currentImage : undefined, {
     compress: false, // 查看器不压缩，保持原图质量
     forceReload: false,
+    delay: 0, // 立即加载，不延迟
+    enabled: visible, // 只在可见时加载
   });
+
+  // 暂时禁用预加载，避免网络压力
+  // useImage(visible && nextImage ? nextImage : undefined, {
+  //   compress: false,
+  //   forceReload: false,
+  //   delay: 100, // 延迟100ms预加载，避免阻塞当前图片
+  // });
+
+  // useImage(visible && prevImage ? prevImage : undefined, {
+  //   compress: false,
+  //   forceReload: false,
+  //   delay: 200, // 延迟200ms预加载上一张
+  // });
 
   // 重置状态当组件变为可见时
   useEffect(() => {
@@ -70,6 +93,39 @@ export function ImageViewer({
       !currentImageLoading && !currentImageError && !!currentImageDataUrl,
     );
   }, [currentImageLoading, currentImageError, currentImageDataUrl]);
+
+  // 快速加载备用方案：如果图片管理器加载超过1秒，使用原生加载
+  useEffect(() => {
+    if (!visible || !currentImage) return;
+
+    let timeoutId: NodeJS.Timeout;
+    let fallbackLoaded = false;
+
+    if (currentImageLoading) {
+      timeoutId = setTimeout(() => {
+        if (!fallbackLoaded && currentImageLoading) {
+          console.log("[ImageViewer] 使用快速加载备用方案");
+          // 直接使用原生 img 标签加载
+          const img = new Image();
+          img.onload = () => {
+            setImageLoaded(true);
+            setIsLoading(false);
+            fallbackLoaded = true;
+          };
+          img.onerror = () => {
+            // 备用方案也失败，保持原有状态
+          };
+          img.src = currentImage;
+        }
+      }, 1000); // 减少到1秒超时，快速切换到备用方案
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [visible, currentImage, currentImageLoading]);
 
   // 键盘导航
   useEffect(() => {

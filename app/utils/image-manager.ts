@@ -41,8 +41,8 @@ class ImageManager {
   // 配置选项
   private readonly maxCacheSize = 100; // 最大缓存数量
   private readonly maxImageSize = 256 * 1024; // 最大图片压缩大小 256KB
-  private readonly retryCount = 3; // 重试次数
-  private readonly retryDelay = 1000; // 重试延迟
+  private readonly retryCount = 1; // 减少到1次重试，避免网络压力
+  private readonly retryDelay = 1000; // 增加重试延迟，避免网络拥塞
 
   constructor() {
     // 定期清理超出限制的缓存（但不基于时间过期）
@@ -220,7 +220,7 @@ class ImageManager {
         let fetchUrl = url;
         let fetchOptions: RequestInit = {
           method: "GET",
-          signal: AbortSignal.timeout(30000), // 30秒超时
+          signal: AbortSignal.timeout(5000), // 减少到5秒超时，快速失败
         };
 
         if (isCacheUrl) {

@@ -492,6 +492,14 @@ class PhotoStorage {
           photo.sessionId,
           photo.messageId,
         );
+
+        // 检查是否已存在，避免重复添加
+        const existingPhoto = await this.getPhotoById(id);
+        if (existingPhoto) {
+          results.push(existingPhoto);
+          continue;
+        }
+
         const enhancedPhoto: PhotoInfo = { ...photo, id };
 
         await set(this.getPhotoKey(id), enhancedPhoto);
@@ -553,7 +561,13 @@ class PhotoStorage {
         (photo): photo is PhotoInfo => photo !== undefined,
       );
 
-      let results = photos;
+      // 去重：确保没有重复的 ID
+      const uniquePhotos = photos.filter(
+        (photo, index, self) =>
+          index === self.findIndex((p) => p.id === photo.id),
+      );
+
+      let results = uniquePhotos;
 
       // 筛选会话
       if (sessionId) {

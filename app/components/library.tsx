@@ -76,7 +76,7 @@ export function Library() {
 
       setStats(stats);
       // 如果返回的数量少于限制，说明没有更多了。如果 newPhotos 为空，也说明没有更多了。
-      setHasMore(newPhotos.length > 0 && newPhotos.length === 50);
+      setHasMore(newPhotos.length > 0 && newPhotos.length >= 50);
     } catch (error) {
       console.error("[Library] 加载照片失败:", error);
 
@@ -100,7 +100,7 @@ export function Library() {
         setTimeout(() => {
           setIsLoadingMore(false);
           loadingLockRef.current = false; // 释放加载锁
-        }, 300); // 延迟300ms 使加载动画可见
+        }, 150); // 减少延迟时间，提高响应速度
       }
     }
   }, []);

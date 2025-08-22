@@ -201,10 +201,14 @@ class PhotoCollector {
   private async preloadBatch(imageUrls: string[]): Promise<void> {
     if (imageUrls.length === 0) return;
 
-    // 批量预加载，每批10张图片
-    const batchSize = 10;
-    for (let i = 0; i < imageUrls.length; i += batchSize) {
-      const batch = imageUrls.slice(i, i + batchSize);
+    // 大幅减少预加载数量，避免网络压力
+    const maxPreload = 5; // 最多预加载5张
+    const urlsToPreload = imageUrls.slice(0, maxPreload);
+
+    // 批量预加载，每批2张图片，减少网络压力
+    const batchSize = 2;
+    for (let i = 0; i < urlsToPreload.length; i += batchSize) {
+      const batch = urlsToPreload.slice(i, i + batchSize);
 
       const batchPromises = batch.map(async (url) => {
         try {
@@ -216,9 +220,9 @@ class PhotoCollector {
 
       await Promise.allSettled(batchPromises);
 
-      // 每批之间稍微延迟，避免过度占用资源
-      if (i + batchSize < imageUrls.length) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      // 增加延迟时间，避免网络拥塞
+      if (i + batchSize < urlsToPreload.length) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
   }
@@ -384,7 +388,6 @@ class PhotoCollector {
    */
   async loadMore(): Promise<PhotoInfo[]> {
     this.currentPage += 1;
-    await this.loadPage(this.currentPage); // 确保这一页的数据也加载到内存
 
     const photos = await photoStorage.getPhotos({
       limit: this.PAGE_SIZE,
@@ -393,7 +396,23 @@ class PhotoCollector {
       sortOrder: "desc",
     });
 
-    return photos; // 返回当前页的新照片
+    // 更新内存中的照片信息
+    photos.forEach((photo) => {
+      this.photos.set(photo.url, photo);
+    });
+
+    // 检查网络状态，只在网络良好时预加载
+    if (
+      navigator.onLine &&
+      (navigator as any).connection?.effectiveType === "4g"
+    ) {
+      // 暂时禁用预加载，避免网络压力
+      // this.preloadBatch(photos.map((p) => p.url)).catch((error) => {
+      //   console.warn("[PhotoCollector] 预加载失败:", error);
+      // });
+    }
+
+    return photos; // 立即返回当前页的新照片
   }
 
   /**
