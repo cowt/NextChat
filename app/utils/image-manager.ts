@@ -190,31 +190,37 @@ class ImageManager {
         const isCacheUrl = url.includes(CACHE_URL_PREFIX);
         const isLocalUrl = url.startsWith(window.location.origin);
         const isDataUrl = url.startsWith("data:image/");
+        const isBlobUrl = url.startsWith("blob:");
+        const isFileUrl = url.startsWith("file:");
 
-        // 如果是base64图片，直接处理，不走网络请求
-        if (isDataUrl) {
-          const response = await fetch(url);
-          const blob = await response.blob();
+        // 如果是本地图片（base64、blob、file、缓存URL），直接处理，不走网络请求
+        if (isDataUrl || isBlobUrl || isFileUrl || isCacheUrl || isLocalUrl) {
+          try {
+            const response = await fetch(url);
+            const blob = await response.blob();
 
-          let dataUrl: string;
-          if (compress && blob.size > 256 * 1024) {
-            // 使用压缩函数，直接返回dataUrl
-            dataUrl = await compressImage(blob, 256 * 1024);
-          } else {
-            dataUrl = await this.blobToDataUrl(blob);
+            let dataUrl: string;
+            if (compress && blob.size > 256 * 1024) {
+              // 使用压缩函数，直接返回dataUrl
+              dataUrl = await compressImage(blob, 256 * 1024);
+            } else {
+              dataUrl = await this.blobToDataUrl(blob);
+            }
+
+            const dimensions = await this.getImageDimensions(blob);
+
+            return {
+              url,
+              dataUrl,
+              blob: blob, // 保持原始blob
+              loading: false,
+              error: undefined,
+              width: dimensions.width,
+              height: dimensions.height,
+            };
+          } catch (error) {
+            throw error;
           }
-
-          const dimensions = await this.getImageDimensions(blob);
-
-          return {
-            url,
-            dataUrl,
-            blob: blob, // 保持原始blob
-            loading: false,
-            error: undefined,
-            width: dimensions.width,
-            height: dimensions.height,
-          };
         }
 
         let fetchUrl = url;
@@ -270,7 +276,6 @@ class ImageManager {
           // 1) 如果有 original url（通过 URLSearchParams or 已知前缀），改为原地址重试
           // 2) 否则直接抛错让上层吞掉
           if (response.status === 404 && isCacheUrl) {
-            console.warn(`[ImageManager] Cache miss for ${url}`);
             // 如果 /api/cache/xxx.png 这种直接文件名，无法恢复原始 URL，则直接抛错给外层
             throw new Error(`Cache not found: ${response.status}`);
           }
@@ -305,11 +310,6 @@ class ImageManager {
         };
       } catch (error) {
         attempt++;
-        console.warn(
-          `[ImageManager] Load failed (attempt ${attempt}/${this.retryCount}):`,
-          url,
-          error,
-        );
 
         // 对于缓存404错误，不进行重试
         if (
@@ -370,7 +370,6 @@ class ImageManager {
   async preloadImages(urls: string[]): Promise<void> {
     const promises = urls.map((url) =>
       this.loadImage(url, { preload: true, compress: true }).catch((error) => {
-        console.warn(`[ImageManager] Preload failed:`, url, error);
         return null;
       }),
     );

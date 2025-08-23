@@ -2,8 +2,8 @@
  * React Hook for image loading with cache and deduplication
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { imageManager, ImageLoadResult } from './image-manager';
+import { useEffect, useState, useCallback, useRef } from "react";
+import { imageManager, ImageLoadResult } from "./image-manager";
 
 export interface UseImageOptions {
   /** 是否启用加载 */
@@ -41,7 +41,10 @@ export interface UseImageReturn {
 /**
  * 单个图片加载Hook
  */
-export function useImage(url: string | undefined, options: UseImageOptions = {}): UseImageReturn {
+export function useImage(
+  url: string | undefined,
+  options: UseImageOptions = {},
+): UseImageReturn {
   const {
     enabled = true,
     forceReload = false,
@@ -69,36 +72,40 @@ export function useImage(url: string | undefined, options: UseImageOptions = {})
 
   const reload = useCallback(() => {
     if (!url) return;
-    
-    setState(prev => ({ ...prev, loading: true, error: undefined }));
-    
-    imageManager.loadImage(url, {
-      forceReload: true,
-      compress,
-    }).then(result => {
-      setState({
-        dataUrl: result.dataUrl,
-        blob: result.blob,
-        loading: false,
-        error: result.error,
-        width: result.width,
-        height: result.height,
-      });
 
-      if (result.error) {
-        onErrorRef.current?.(result.error);
-      } else {
-        onLoadRef.current?.(result);
-      }
-    }).catch(error => {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: errorMsg,
-      }));
-      onErrorRef.current?.(errorMsg);
-    });
+    setState((prev) => ({ ...prev, loading: true, error: undefined }));
+
+    imageManager
+      .loadImage(url, {
+        forceReload: true,
+        compress,
+      })
+      .then((result) => {
+        setState({
+          dataUrl: result.dataUrl,
+          blob: result.blob,
+          loading: false,
+          error: result.error,
+          width: result.width,
+          height: result.height,
+        });
+
+        if (result.error) {
+          onErrorRef.current?.(result.error);
+        } else {
+          onLoadRef.current?.(result);
+        }
+      })
+      .catch((error) => {
+        const errorMsg =
+          error instanceof Error ? error.message : "Unknown error";
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: errorMsg,
+        }));
+        onErrorRef.current?.(errorMsg);
+      });
   }, [url, compress]);
 
   const clearCache = useCallback(() => {
@@ -118,7 +125,7 @@ export function useImage(url: string | undefined, options: UseImageOptions = {})
     const loadImage = async () => {
       // 延迟加载
       if (delay > 0) {
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
         if (cancelled) return;
       }
 
@@ -146,8 +153,9 @@ export function useImage(url: string | undefined, options: UseImageOptions = {})
         }
       } catch (error) {
         if (!cancelled) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          setState(prev => ({
+          const errorMsg =
+            error instanceof Error ? error.message : "Unknown error";
+          setState((prev) => ({
             ...prev,
             loading: false,
             error: errorMsg,
@@ -159,10 +167,9 @@ export function useImage(url: string | undefined, options: UseImageOptions = {})
 
     // 先检查缓存状态
     const cached = imageManager.getCacheStatus(url);
-    
+
     // 如果有完整的缓存且不强制重新加载，直接使用缓存
     if (cached && cached.dataUrl && !cached.error && !forceReload) {
-
       setState({
         dataUrl: cached.dataUrl,
         blob: cached.blob,
@@ -174,11 +181,10 @@ export function useImage(url: string | undefined, options: UseImageOptions = {})
       onLoadRef.current?.(cached);
       return; // 直接返回，不进行任何加载
     }
-    
+
     // 如果正在加载中，更新状态但不重新发起请求
     if (cached && cached.loading) {
-
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         loading: true,
         error: undefined,
@@ -187,8 +193,7 @@ export function useImage(url: string | undefined, options: UseImageOptions = {})
     }
 
     // 设置加载状态并开始加载
-
-    setState(prev => ({ ...prev, loading: true, error: undefined }));
+    setState((prev) => ({ ...prev, loading: true, error: undefined }));
     loadImage();
 
     return () => {
@@ -211,14 +216,19 @@ export function useImage(url: string | undefined, options: UseImageOptions = {})
 /**
  * 多个图片加载Hook
  */
-export function useImages(urls: string[], options: UseImageOptions = {}): {
+export function useImages(
+  urls: string[],
+  options: UseImageOptions = {},
+): {
   images: Record<string, UseImageReturn>;
   allLoading: boolean;
   hasErrors: boolean;
   loadedCount: number;
   totalCount: number;
 } {
-  const [imageStates, setImageStates] = useState<Record<string, UseImageReturn>>({});
+  const [imageStates, setImageStates] = useState<
+    Record<string, UseImageReturn>
+  >({});
 
   const {
     enabled = true,
@@ -239,7 +249,7 @@ export function useImages(urls: string[], options: UseImageOptions = {}): {
       const newStates: Record<string, UseImageReturn> = {};
 
       // 初始化状态
-      urls.forEach(url => {
+      urls.forEach((url) => {
         const cached = imageManager.getCacheStatus(url);
         newStates[url] = {
           dataUrl: cached?.dataUrl,
@@ -260,7 +270,9 @@ export function useImages(urls: string[], options: UseImageOptions = {}): {
         try {
           // 交错延迟，避免同时发起大量请求
           if (delay > 0) {
-            await new Promise(resolve => setTimeout(resolve, delay + index * 50));
+            await new Promise((resolve) =>
+              setTimeout(resolve, delay + index * 50),
+            );
           }
 
           const result = await imageManager.loadImage(url, {
@@ -268,7 +280,7 @@ export function useImages(urls: string[], options: UseImageOptions = {}): {
             compress,
           });
 
-          setImageStates(prev => ({
+          setImageStates((prev) => ({
             ...prev,
             [url]: {
               ...prev[url],
@@ -287,8 +299,9 @@ export function useImages(urls: string[], options: UseImageOptions = {}): {
             onLoad?.(result);
           }
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          setImageStates(prev => ({
+          const errorMsg =
+            error instanceof Error ? error.message : "Unknown error";
+          setImageStates((prev) => ({
             ...prev,
             [url]: {
               ...prev[url],
@@ -306,9 +319,11 @@ export function useImages(urls: string[], options: UseImageOptions = {}): {
     loadImages();
   }, [urls, enabled, forceReload, compress, delay, onLoad, onError]);
 
-  const allLoading = Object.values(imageStates).some(state => state.loading);
-  const hasErrors = Object.values(imageStates).some(state => state.error);
-  const loadedCount = Object.values(imageStates).filter(state => !state.loading && !state.error).length;
+  const allLoading = Object.values(imageStates).some((state) => state.loading);
+  const hasErrors = Object.values(imageStates).some((state) => state.error);
+  const loadedCount = Object.values(imageStates).filter(
+    (state) => !state.loading && !state.error,
+  ).length;
 
   return {
     images: imageStates,
@@ -345,7 +360,7 @@ export function useImagePreload(urls: string[], enabled = true) {
           setPreloaded(true);
         }
       } catch (error) {
-        console.warn('[useImagePreload] Preload failed:', error);
+        // 预加载失败，静默处理
       } finally {
         if (!cancelled) {
           setLoading(false);

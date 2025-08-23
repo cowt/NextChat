@@ -67,6 +67,14 @@ export function OptimizedImage({
   // 使用实际的src或备用src
   const actualSrc = useFallback && fallbackSrc ? fallbackSrc : src;
 
+  // 检查是否为本地图片（base64、blob、file、缓存URL等）
+  const isLocalImage =
+    actualSrc?.startsWith("data:") ||
+    actualSrc?.startsWith("blob:") ||
+    actualSrc?.startsWith("file:") ||
+    actualSrc?.includes("/api/cache/") ||
+    actualSrc?.startsWith(window.location.origin);
+
   const {
     dataUrl,
     loading,
@@ -74,7 +82,7 @@ export function OptimizedImage({
     width: imgWidth,
     height: imgHeight,
   } = useImage(isInView ? actualSrc : undefined, {
-    compress,
+    compress: isLocalImage ? false : compress, // 本地图片不压缩
     onLoad: (result) => {
       onLoad?.(actualSrc, result.width, result.height);
     },
@@ -90,6 +98,12 @@ export function OptimizedImage({
 
   // 懒加载的Intersection Observer
   React.useEffect(() => {
+    // 本地图片不需要懒加载，直接显示
+    if (isLocalImage) {
+      setIsInView(true);
+      return;
+    }
+
     if (!lazy || isInView) return;
 
     const observer = new IntersectionObserver(
@@ -111,13 +125,29 @@ export function OptimizedImage({
     }
 
     return () => observer.disconnect();
-  }, [lazy, isInView]);
+  }, [lazy, isInView, isLocalImage]);
 
   const handleClick = (event: React.MouseEvent<HTMLImageElement>) => {
     onClick?.(actualSrc, event);
   };
 
   const renderContent = () => {
+    // 本地图片直接显示，不需要懒加载和加载状态
+    if (isLocalImage && actualSrc) {
+      return (
+        <img
+          ref={imgRef}
+          src={actualSrc}
+          alt={alt}
+          className={className}
+          style={style}
+          onClick={handleClick}
+          loading="eager"
+          {...imgProps}
+        />
+      );
+    }
+
     // 如果还没有进入视口且启用了懒加载，显示占位符
     if (!isInView && lazy) {
       return (

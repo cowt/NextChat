@@ -459,15 +459,17 @@ export const useChatStore = createPersistStore(
         get().checkMcpJson(message);
 
         // 通知照片收集器有新消息
-        if (typeof window !== 'undefined') {
+        if (typeof window !== "undefined") {
           try {
-            import('../utils/photo-collector').then(({ photoCollector }) => {
-              photoCollector.onNewMessage(message, targetSession);
-            }).catch(error => {
-              console.warn('[ChatStore] 照片收集器通知失败:', error);
-            });
+            import("../utils/photo-collector")
+              .then(({ photoCollector }) => {
+                photoCollector.onNewMessage(message, targetSession);
+              })
+              .catch((error) => {
+                console.warn("[ChatStore] 照片收集器通知失败:", error);
+              });
           } catch (error) {
-            console.warn('[ChatStore] 照片收集器导入失败:', error);
+            console.warn("[ChatStore] 照片收集器导入失败:", error);
           }
         }
 
@@ -536,8 +538,16 @@ export const useChatStore = createPersistStore(
             if (message) {
               botMessage.content = message;
             }
+            // 优化：只在流式更新时触发状态更新，不重新创建整个数组
+            // 这样可以避免所有消息项的重渲染，只更新最后一条消息
             get().updateTargetSession(session, (session) => {
-              session.messages = session.messages.concat();
+              // 直接修改最后一条消息的引用，触发React重新渲染
+              const lastMessage = session.messages[session.messages.length - 1];
+              if (lastMessage && lastMessage.id === botMessage.id) {
+                // 触发React检测到对象变化
+                lastMessage.content = botMessage.content;
+                lastMessage.streaming = botMessage.streaming;
+              }
             });
           },
           async onFinish(message) {
@@ -854,13 +864,6 @@ export const useChatStore = createPersistStore(
         const effectiveCompressThreshold = Math.max(
           modelConfig?.compressMessageLengthThreshold ?? 0,
           globalModelConfig?.compressMessageLengthThreshold ?? 0,
-        );
-
-        console.log(
-          "[Chat History] ",
-          toBeSummarizedMsgs,
-          historyMsgLength,
-          modelConfig.compressMessageLengthThreshold,
         );
 
         if (summaryEnabled && historyMsgLength > effectiveCompressThreshold) {

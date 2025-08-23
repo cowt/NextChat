@@ -2227,6 +2227,7 @@ function _Chat() {
                               }}
                               onCheckboxToggle={handleCheckboxToggle}
                               selectedCheckboxItems={selectedCheckboxItems}
+                              isStreaming={message.streaming}
                             />
                             {/* 对话结尾的进行中指示符（仅最后一条助手消息） */}
                             {config.showProgressTail && (
@@ -2259,7 +2260,10 @@ function _Chat() {
                             {getMessageImages(message).length > 1 && (
                               <OptimizedImageGrid
                                 images={getMessageImages(message)}
-                                columns={Math.min(getMessageImages(message).length, 3)}
+                                columns={Math.min(
+                                  getMessageImages(message).length,
+                                  3,
+                                )}
                                 gap={10}
                                 className={styles["chat-message-item-images"]}
                                 style={
@@ -2280,7 +2284,8 @@ function _Chat() {
                                   );
                                 }}
                                 imageProps={{
-                                  className: styles["chat-message-item-image-multi"],
+                                  className:
+                                    styles["chat-message-item-image-multi"],
                                   lazy: true,
                                   compress: true,
                                 }}

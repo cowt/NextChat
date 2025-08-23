@@ -29,61 +29,152 @@ import FoldableContent from "./foldable-content";
 import { MediaOptionSelector } from "./media-option-selector";
 import { OptimizedImage } from "./optimized-image";
 
-// Memoized image component with unified cache management
-const MarkdownImage = React.memo((imgProps: any) => {
-  const [imageSrc, setImageSrc] = React.useState(imgProps.src || "");
-  
-  React.useEffect(() => {
-    const originalSrc = imgProps.src;
-    if (!originalSrc) return;
-    
-    // 通过ImageManager预加载图片，获取缓存的dataUrl
-    const loadImageThroughManager = async () => {
-      try {
-        const { imageManager } = await import("../utils/image-manager");
-        const result = await imageManager.loadImage(originalSrc, {
-          compress: true,
-          preload: true
-        });
-        
-        // 如果有缓存的dataUrl，使用它替换原始URL
-        // 这样原生img标签也能享受ImageManager的缓存
-        if (result.dataUrl && !result.loading && !result.error) {
-          setImageSrc(result.dataUrl);
-        } else {
-          setImageSrc(originalSrc);
-        }
-      } catch (error) {
-        // 降级：直接使用原始URL
-        setImageSrc(originalSrc);
-      }
-    };
-    
-    loadImageThroughManager();
-  }, [imgProps.src]);
-  
-  // 使用原生img标签以确保Markdown的点击事件处理能正常工作
-  return (
-    <img
-      src={imageSrc}
-      alt={imgProps.alt || ""}
-      title={imgProps.title}
-      className={imgProps.className}
-      style={imgProps.style}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-    />
-  );
-}, (prevProps, nextProps) => {
-  // 自定义比较函数，只有src真正变化时才重新渲染
-  return prevProps.src === nextProps.src &&
-         prevProps.alt === nextProps.alt &&
-         prevProps.title === nextProps.title &&
-         prevProps.className === nextProps.className;
-});
+// Memoized image component with CLS prevention - 只做预加载，不替换src
+const MarkdownImage = React.memo(
+  (imgProps: any) => {
+    const [imageDimensions, setImageDimensions] = React.useState<{
+      width?: number;
+      height?: number;
+      aspectRatio?: string;
+    }>({});
+    const isAliveRef = React.useRef(true);
 
-MarkdownImage.displayName = 'MarkdownImage';
+    React.useEffect(() => {
+      return () => {
+        isAliveRef.current = false;
+      };
+    }, []);
+
+    React.useEffect(() => {
+      const originalSrc = imgProps.src;
+      if (!originalSrc) return;
+
+      // 检查是否为本地图片（base64、blob、file等）
+      const isLocalImage =
+        originalSrc.startsWith("data:") ||
+        originalSrc.startsWith("blob:") ||
+        originalSrc.startsWith("file:");
+
+      // 只做预加载，不替换src，避免二次渲染
+      const preloadImageForDimensions = async () => {
+        try {
+          if (isLocalImage) {
+            // 对于本地图片，直接获取尺寸，不需要通过imageManager
+            const img = new Image();
+            img.onload = () => {
+              if (isAliveRef.current) {
+                setImageDimensions({
+                  width: img.naturalWidth,
+                  height: img.naturalHeight,
+                  aspectRatio: `${img.naturalWidth} / ${img.naturalHeight}`,
+                });
+              }
+            };
+            img.onerror = () => {
+              // 本地图片尺寸获取失败，静默处理
+            };
+            img.src = originalSrc;
+          } else {
+            // 远程图片通过imageManager预加载
+            const { imageManager } = await import("../utils/image-manager");
+            const result = await imageManager.loadImage(originalSrc, {
+              compress: true,
+              preload: true,
+            });
+
+            // 只在组件仍然挂载时更新尺寸信息
+            if (isAliveRef.current && result.width && result.height) {
+              setImageDimensions({
+                width: result.width,
+                height: result.height,
+                aspectRatio: `${result.width} / ${result.height}`,
+              });
+            }
+          }
+        } catch (error) {
+          // 预加载失败不影响显示，静默处理
+        }
+      };
+
+      preloadImageForDimensions();
+
+      // 清理函数，防止组件卸载后的状态更新
+      return () => {
+        isAliveRef.current = false;
+      };
+    }, [imgProps.src]);
+
+    // 计算样式，优先使用aspect-ratio避免CLS
+    const imageStyle = useMemo(() => {
+      const baseStyle = imgProps.style || {};
+
+      // 检查是否为本地图片
+      const isLocalImage =
+        imgProps.src?.startsWith("data:") ||
+        imgProps.src?.startsWith("blob:") ||
+        imgProps.src?.startsWith("file:");
+
+      if (imageDimensions.aspectRatio) {
+        return {
+          ...baseStyle,
+          aspectRatio: imageDimensions.aspectRatio,
+          maxWidth: "100%",
+          height: "auto",
+        };
+      } else if (imageDimensions.width && imageDimensions.height) {
+        return {
+          ...baseStyle,
+          width: Math.min(imageDimensions.width, 800), // 限制最大宽度
+          height: "auto",
+        };
+      }
+
+      // 本地图片不需要占位样式，直接显示
+      if (isLocalImage) {
+        return {
+          ...baseStyle,
+          maxWidth: "100%",
+          height: "auto",
+        };
+      }
+
+      // 默认占位样式，避免布局跳动
+      return {
+        ...baseStyle,
+        minHeight: "200px", // 默认最小高度占位
+        maxWidth: "100%",
+        height: "auto",
+      };
+    }, [imageDimensions, imgProps.style, imgProps.src]);
+
+    // 始终使用原始src，避免二次渲染
+    return (
+      <img
+        src={imgProps.src}
+        alt={imgProps.alt || ""}
+        title={imgProps.title}
+        className={imgProps.className}
+        style={imageStyle}
+        loading={imgProps.src?.startsWith("data:") ? "eager" : "lazy"} // 本地图片立即加载
+        decoding="async"
+        referrerPolicy="no-referrer"
+      />
+    );
+  },
+  (prevProps, nextProps) => {
+    // 更严格的比较函数，只有真正必要的属性变化时才重新渲染
+    // 避免因为style或其他属性变化导致重挂载
+    return (
+      prevProps.src === nextProps.src &&
+      prevProps.alt === nextProps.alt &&
+      prevProps.title === nextProps.title &&
+      prevProps.className === nextProps.className &&
+      prevProps.style === nextProps.style
+    );
+  },
+);
+
+MarkdownImage.displayName = "MarkdownImage";
 
 // placeholder for nested triple backticks inside fold bodies
 const BACKTICK_PLACEHOLDER = "__BACKTICK_TRIPLE_PLACEHOLDER__";
@@ -134,7 +225,7 @@ export function Mermaid(props: { code: string }) {
   );
 }
 
-export function PreCode(props: { children: any }) {
+export function PreCode(props: { children: any; isStreaming?: boolean }) {
   const ref = useRef<HTMLPreElement>(null);
   const previewRef = useRef<HTMLPreviewHandler>(null);
   const [mermaidCode, setMermaidCode] = useState("");
@@ -145,6 +236,9 @@ export function PreCode(props: { children: any }) {
   const session = chatStore.currentSession();
 
   const renderArtifacts = useDebouncedCallback(() => {
+    // 在流式渲染期间不渲染artifacts，避免布局跳动
+    if (props.isStreaming) return;
+
     if (!ref.current) return;
     const mermaidDom = ref.current.querySelector("code.language-mermaid");
     if (mermaidDom) {
@@ -190,9 +284,13 @@ export function PreCode(props: { children: any }) {
           codeElement.style.whiteSpace = "pre-wrap";
         }
       });
-      setTimeout(renderArtifacts, 1);
+
+      // 只在非流式状态下渲染artifacts
+      if (!props.isStreaming) {
+        setTimeout(renderArtifacts, 1);
+      }
     }
-  }, []);
+  }, [props.isStreaming]);
 
   // If this is a special fold block (from ```` fenced), render a wrapper where
   // the summary is at the top level, and the <pre> sits inside the wrapper.
@@ -245,7 +343,11 @@ export function PreCode(props: { children: any }) {
         previewText={getRawContent()}
         showTypingPreview
       >
-        <MarkdownContent content={getRawContent()} allowXmlFold={false} />
+        <MarkdownContent
+          content={getRawContent()}
+          allowXmlFold={false}
+          isStreaming={props.isStreaming}
+        />
       </FoldableContent>
     );
   }
@@ -265,10 +367,11 @@ export function PreCode(props: { children: any }) {
         ></span>
         {props.children}
       </pre>
-      {mermaidCode.length > 0 && (
+      {/* 只在非流式状态下渲染Mermaid和HTML预览 */}
+      {!props.isStreaming && mermaidCode.length > 0 && (
         <Mermaid code={mermaidCode} key={mermaidCode} />
       )}
-      {htmlCode.length > 0 && enableArtifacts && (
+      {!props.isStreaming && htmlCode.length > 0 && enableArtifacts && (
         <FullScreen className="no-dark html" right={70}>
           <ArtifactsShareButton
             style={{ position: "absolute", right: 20, top: 10 }}
@@ -293,7 +396,11 @@ export function PreCode(props: { children: any }) {
   );
 }
 
-function CustomCode(props: { children: any; className?: string }) {
+function CustomCode(props: {
+  children: any;
+  className?: string;
+  isStreaming?: boolean;
+}) {
   const chatStore = useChatStore();
   const session = chatStore.currentSession();
   const config = useAppConfig();
@@ -311,9 +418,13 @@ function CustomCode(props: { children: any; className?: string }) {
     if (ref.current) {
       const codeHeight = ref.current.scrollHeight;
       setShowToggle(codeHeight > 400);
-      ref.current.scrollTop = ref.current.scrollHeight;
+
+      // 只在非流式状态下自动滚动到底部，避免干扰用户
+      if (!props.isStreaming) {
+        ref.current.scrollTop = ref.current.scrollHeight;
+      }
     }
-  }, [props.children]);
+  }, [props.children, props.isStreaming]);
 
   const toggleCollapsed = () => {
     setCollapsed((collapsed) => !collapsed);
@@ -509,9 +620,19 @@ function convertXmlTagsToFoldFirstLevel(text: string, tags: string[]) {
   return result || text;
 }
 
-function _MarkDownContent(props: { content: string; allowXmlFold?: boolean }) {
+function _MarkDownContent(props: {
+  content: string;
+  allowXmlFold?: boolean;
+  isStreaming?: boolean;
+}) {
   const config = useAppConfig();
+
+  // 使用ref存储上一次的非流式内容，避免流式过程中重新渲染
+  const lastNonStreamingContentRef = useRef<string>("");
+  const lastNonStreamingResultRef = useRef<React.ReactElement | null>(null);
+
   const escapedContent = useMemo(() => {
+    // 始终进行结构转换，确保标签折叠功能正常工作
     const withFold = convertFourBackticksToFold(props.content);
     const finalText =
       props.allowXmlFold === false
@@ -520,10 +641,10 @@ function _MarkDownContent(props: { content: string; allowXmlFold?: boolean }) {
     return tryWrapHtmlCode(escapeBrackets(finalText));
   }, [props.content, props.allowXmlFold, config.foldXmlTags]);
 
-  return (
-    <ReactMarkdown
-      remarkPlugins={[RemarkMath, RemarkGfm, RemarkBreaks]}
-      rehypePlugins={[
+  // 在流式阶段禁用语法高亮和数学公式渲染，避免频繁重排
+  const rehypePlugins = props.isStreaming
+    ? [] // 流式阶段不启用任何rehype插件
+    : [
         RehypeKatex,
         [
           RehypeHighlight,
@@ -531,60 +652,150 @@ function _MarkDownContent(props: { content: string; allowXmlFold?: boolean }) {
             detect: false,
             ignoreMissing: true,
           },
-        ],
-      ]}
-      components={{
-        pre: PreCode,
-        code: CustomCode,
-        input: (inputProps) => {
-          // 确保复选框可以正常交互
-          if (inputProps.type === "checkbox") {
-            return (
-              <input
-                {...inputProps}
-                style={{
-                  cursor: "pointer",
-                  pointerEvents: "auto",
-                  ...inputProps.style,
-                }}
-                onChange={() => {
-                  // 让我们的事件处理器处理
-                }}
-              />
-            );
-          }
-          return <input {...inputProps} />;
-        },
-        img: MarkdownImage,
-        p: (pProps) => <p {...pProps} dir="auto" />,
-        a: (aProps) => {
-          const href = aProps.href || "";
-          if (/\.(aac|mp3|opus|wav)$/.test(href)) {
-            return (
-              <figure>
-                <audio controls src={href}></audio>
-              </figure>
-            );
-          }
-          if (/\.(3gp|3g2|webm|ogv|mpeg|mp4|avi)$/.test(href)) {
-            return (
-              <video controls width="99.9%">
-                <source src={href} />
-              </video>
-            );
-          }
-          const isInternal = /^\/#/i.test(href);
-          const target = isInternal ? "_self" : aProps.target ?? "_blank";
-          return <a {...aProps} target={target} />;
-        },
-      }}
+        ] as any,
+      ];
+
+  // 使用useMemo缓存components配置，避免每次渲染都重新创建
+  const components = useMemo(
+    () => ({
+      pre: (preProps: any) => (
+        <PreCode {...preProps} isStreaming={props.isStreaming} />
+      ),
+      code: (codeProps: any) => (
+        <CustomCode {...codeProps} isStreaming={props.isStreaming} />
+      ),
+      input: (inputProps: any) => {
+        // 确保复选框可以正常交互
+        if (inputProps.type === "checkbox") {
+          return (
+            <input
+              {...inputProps}
+              style={{
+                cursor: "pointer",
+                pointerEvents: "auto",
+                ...inputProps.style,
+              }}
+              onChange={() => {
+                // 让我们的事件处理器处理
+              }}
+            />
+          );
+        }
+        return <input {...inputProps} />;
+      },
+      img: (imgProps: any) => {
+        // 使用更稳定的key，包含alt和title信息，避免因其他属性变化导致重挂载
+        const stableKey = `${imgProps.src}-${imgProps.alt || ""}-${
+          imgProps.title || ""
+        }`;
+        return <MarkdownImage key={stableKey} {...imgProps} />;
+      },
+      p: (pProps: any) => <p {...pProps} dir="auto" />,
+      a: (aProps: any) => {
+        const href = aProps.href || "";
+        if (/\.(aac|mp3|opus|wav)$/.test(href)) {
+          return (
+            <figure>
+              <audio controls src={href}></audio>
+            </figure>
+          );
+        }
+        if (/\.(3gp|3g2|webm|ogv|mpeg|mp4|avi)$/.test(href)) {
+          return (
+            <video controls width="99.9%">
+              <source src={href} />
+            </video>
+          );
+        }
+        const isInternal = /^\/#/i.test(href);
+        const target = isInternal ? "_self" : aProps.target ?? "_blank";
+        return <a {...aProps} target={target} />;
+      },
+    }),
+    [props.isStreaming],
+  ); // 保留依赖，但优化缓存复用逻辑
+
+  // 在流式阶段，如果内容变化不大且不包含需要折叠的标签，复用上一次的渲染结果
+  if (
+    props.isStreaming &&
+    lastNonStreamingContentRef.current &&
+    props.content.startsWith(lastNonStreamingContentRef.current) &&
+    lastNonStreamingResultRef.current
+  ) {
+    // 检查是否包含需要折叠的标签，如果包含则不复用缓存
+    const hasFoldableTags = (config as any).foldXmlTags?.some(
+      (tag: string) =>
+        props.content.includes(`<${tag}`) ||
+        props.content.includes(`</${tag}>`),
+    );
+
+    // 检查是否只是简单的文本追加（不包含新的图片、代码块等）
+    const isSimpleAppend =
+      !props.content.includes("![") &&
+      !props.content.includes("```") &&
+      !props.content.includes("<img") &&
+      !hasFoldableTags;
+
+    if (isSimpleAppend) {
+      return lastNonStreamingResultRef.current;
+    } else if (!hasFoldableTags) {
+      return lastNonStreamingResultRef.current;
+    }
+  }
+
+  // 流结束时，如果内容与缓存内容相同，复用缓存结果
+  if (
+    !props.isStreaming &&
+    props.content &&
+    lastNonStreamingContentRef.current === props.content &&
+    lastNonStreamingResultRef.current
+  ) {
+    return lastNonStreamingResultRef.current;
+  }
+
+  // 流式阶段，如果内容完全相同，也复用缓存结果
+  if (
+    props.isStreaming &&
+    props.content &&
+    lastNonStreamingContentRef.current === props.content &&
+    lastNonStreamingResultRef.current
+  ) {
+    return lastNonStreamingResultRef.current;
+  }
+
+  // 非流式阶段或内容变化较大时，正常渲染
+  const result = (
+    <ReactMarkdown
+      remarkPlugins={[RemarkMath, RemarkGfm, RemarkBreaks]}
+      rehypePlugins={rehypePlugins}
+      components={components}
     >
       {escapedContent}
     </ReactMarkdown>
   );
+
+  // 保存非流式阶段的渲染结果
+  if (!props.isStreaming) {
+    lastNonStreamingContentRef.current = props.content;
+    lastNonStreamingResultRef.current = result;
+  }
+
+  return result;
 }
 
-export const MarkdownContent = React.memo(_MarkDownContent);
+export const MarkdownContent = React.memo(
+  _MarkDownContent,
+  (prevProps, nextProps) => {
+    // 自定义比较函数，避免不必要的重渲染
+    // 只有在内容真正变化时才重新渲染
+    if (prevProps.content !== nextProps.content) return false;
+    if (prevProps.allowXmlFold !== nextProps.allowXmlFold) return false;
+    if (prevProps.isStreaming !== nextProps.isStreaming) return false;
+
+    // 所有属性都相同，可以跳过重渲染
+    return true;
+  },
+);
 
 export function Markdown(
   props: {
@@ -597,56 +808,141 @@ export function Markdown(
     onImageClick?: (images: string[], index: number) => void;
     onCheckboxToggle?: (text: string, checked: boolean) => void;
     selectedCheckboxItems?: Set<string>;
+    isStreaming?: boolean; // 新增流式状态参数
   } & React.DOMAttributes<HTMLDivElement>,
 ) {
   const mdRef = useRef<HTMLDivElement>(null);
-  const [allImages, setAllImages] = useState<string[]>([]);
+  // 移除无用的allImages状态，改用ref存储
+  const allImagesRef = useRef<string[]>([]);
 
-  // 收集并设置图片点击事件和复选框交互
+  // 使用事件委托优化事件绑定，避免每次渲染都重新绑定
   useEffect(() => {
+    if (!mdRef.current) return;
+
+    const container = mdRef.current;
     const cleanups: Array<() => void> = [];
 
-    // 处理图片点击事件
-    if (mdRef.current && props.onImageClick) {
-      const allImgNodes = Array.from(
-        mdRef.current.querySelectorAll<HTMLImageElement>("img"),
-      );
+    // 图片点击事件委托
+    if (props.onImageClick) {
+      const handleImageClick = (e: Event) => {
+        const target = e.target as HTMLImageElement;
+        if (target.tagName !== "IMG") return;
 
-      // 仅对未被 <a> 包裹的图片启用预览，避免与跳转/外链冲突
-      const boundImages = allImgNodes.filter((img) => {
-        if (img.hasAttribute("data-no-preview")) return false; // 卡片图片不进预览
-        return !img.closest("a");
-      });
-      const imageSrcs = boundImages.map((img) => img.src).filter(Boolean);
-      setAllImages(imageSrcs);
+        // 检查是否为可预览的图片
+        if (target.hasAttribute("data-no-preview") || target.closest("a")) {
+          return;
+        }
 
-      // 为每个可预览图片添加点击事件
-      boundImages.forEach((img, index) => {
-        const handleClick = (e: Event) => {
+        // 收集所有可预览图片
+        const allImgNodes = Array.from(
+          container.querySelectorAll<HTMLImageElement>("img"),
+        ).filter((img) => {
+          if (img.hasAttribute("data-no-preview")) return false;
+          return !img.closest("a");
+        });
+
+        const imageSrcs = allImgNodes.map((img) => img.src).filter(Boolean);
+        const index = allImgNodes.indexOf(target);
+
+        if (index >= 0) {
           e.preventDefault();
           e.stopPropagation();
           props.onImageClick!(imageSrcs, index);
-        };
+        }
+      };
 
-        img.style.cursor = "pointer";
-        img.addEventListener("click", handleClick);
-        cleanups.push(() => img.removeEventListener("click", handleClick));
-      });
+      container.addEventListener("click", handleImageClick);
+      cleanups.push(() =>
+        container.removeEventListener("click", handleImageClick),
+      );
     }
 
-    // 处理复选框交互
-    if (mdRef.current && props.onCheckboxToggle) {
-      const checkboxes = Array.from(
-        mdRef.current.querySelectorAll<HTMLInputElement>(
-          'input[type="checkbox"]',
-        ),
-      );
+    // 复选框事件委托
+    if (props.onCheckboxToggle) {
+      const handleCheckboxChange = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (target.type !== "checkbox") return;
 
-      checkboxes.forEach((checkbox, index) => {
+        const listItem = target.closest("li");
+        if (!listItem) return;
+
         // 获取复选框所在的列表项文本
+        const clonedItem = listItem.cloneNode(true) as HTMLElement;
+        const clonedCheckbox = clonedItem.querySelector(
+          'input[type="checkbox"]',
+        );
+        if (clonedCheckbox) {
+          clonedCheckbox.remove();
+        }
+        let textContent = clonedItem.textContent?.trim() || "";
+
+        // 提取媒体URL
+        const urlMatch = textContent.match(/(https?:\/\/[^\s]+)/);
+        if (urlMatch) {
+          const url = urlMatch[1];
+          const isMediaUrl =
+            /\.(jpg|jpeg|png|gif|webp|svg|mp4|mp3|wav|ogg|pdf|doc|docx)$/i.test(
+              url,
+            ) ||
+            url.includes("agent_images") ||
+            url.includes("image") ||
+            url.includes("media") ||
+            url.includes("assets") ||
+            url.includes("upload");
+
+          if (isMediaUrl) {
+            textContent = url;
+          }
+        }
+
+        const isChecked = target.checked;
+        props.onCheckboxToggle!(textContent, isChecked);
+      };
+
+      container.addEventListener("change", handleCheckboxChange);
+      cleanups.push(() =>
+        container.removeEventListener("change", handleCheckboxChange),
+      );
+    }
+
+    return () => {
+      cleanups.forEach((fn) => fn());
+    };
+  }, [props.onImageClick, props.onCheckboxToggle]);
+
+  // 分离样式设置，避免在流式过程中频繁操作DOM
+  useEffect(() => {
+    if (!mdRef.current) return;
+
+    // 设置可预览图片的样式
+    const allImgNodes = Array.from(
+      mdRef.current.querySelectorAll<HTMLImageElement>("img"),
+    ).filter((img) => {
+      if (img.hasAttribute("data-no-preview")) return false;
+      return !img.closest("a");
+    });
+
+    allImgNodes.forEach((img) => {
+      img.style.cursor = "pointer";
+    });
+
+    // 设置复选框状态和样式
+    const checkboxes = Array.from(
+      mdRef.current.querySelectorAll<HTMLInputElement>(
+        'input[type="checkbox"]',
+      ),
+    );
+
+    checkboxes.forEach((checkbox) => {
+      checkbox.style.cursor = "pointer";
+      checkbox.style.pointerEvents = "auto";
+      checkbox.disabled = false;
+      checkbox.readOnly = false;
+
+      // 根据传入的状态设置复选框的选中状态
+      if (props.selectedCheckboxItems) {
         const listItem = checkbox.closest("li");
         if (listItem) {
-          // 克隆列表项，移除复选框，然后获取文本
           const clonedItem = listItem.cloneNode(true) as HTMLElement;
           const clonedCheckbox = clonedItem.querySelector(
             'input[type="checkbox"]',
@@ -656,10 +952,8 @@ export function Markdown(
           }
           let textContent = clonedItem.textContent?.trim() || "";
 
-          // 提取媒体URL - 查找http/https开头的URL
           const urlMatch = textContent.match(/(https?:\/\/[^\s]+)/);
           if (urlMatch) {
-            // 如果找到URL，检查是否为媒体文件
             const url = urlMatch[1];
             const isMediaUrl =
               /\.(jpg|jpeg|png|gif|webp|svg|mp4|mp3|wav|ogg|pdf|doc|docx)$/i.test(
@@ -672,59 +966,19 @@ export function Markdown(
               url.includes("upload");
 
             if (isMediaUrl) {
-              textContent = url; // 使用纯净的媒体URL
+              textContent = url;
             }
           }
 
-          // 根据传入的状态设置复选框的选中状态
-          if (props.selectedCheckboxItems) {
-            checkbox.checked = props.selectedCheckboxItems.has(textContent);
-          }
-
-          const handleCheckboxClick = (e: Event) => {
-            e.stopPropagation();
-            // 使用延迟获取更新后的checked状态
-            setTimeout(() => {
-              const isChecked = checkbox.checked;
-              props.onCheckboxToggle!(textContent, isChecked);
-            }, 0);
-          };
-
-          // 确保复选框可以被点击
-          checkbox.style.cursor = "pointer";
-          checkbox.style.pointerEvents = "auto";
-          checkbox.disabled = false;
-          checkbox.readOnly = false;
-
-          // 处理change事件（标准复选框事件）
-          const handleCheckboxChange = (e: Event) => {
-            const target = e.target as HTMLInputElement;
-            const isChecked = target.checked;
-            props.onCheckboxToggle!(textContent, isChecked);
-          };
-
-          // 添加事件监听
-          checkbox.addEventListener("change", handleCheckboxChange);
-          checkbox.addEventListener("click", handleCheckboxClick);
-
-          cleanups.push(() => {
-            checkbox.removeEventListener("change", handleCheckboxChange);
-            checkbox.removeEventListener("click", handleCheckboxClick);
-          });
+          checkbox.checked = props.selectedCheckboxItems.has(textContent);
         }
-      });
-    }
+      }
+    });
 
-    // 统一清理，防止重复绑定
-    return () => {
-      cleanups.forEach((fn) => fn());
-    };
-  }, [
-    props.content,
-    props.onImageClick,
-    props.onCheckboxToggle,
-    props.selectedCheckboxItems,
-  ]);
+    // 更新图片引用
+    const imageSrcs = allImgNodes.map((img) => img.src).filter(Boolean);
+    allImagesRef.current = imageSrcs;
+  }, [props.content, props.selectedCheckboxItems]);
 
   return (
     <div
@@ -743,7 +997,10 @@ export function Markdown(
       ) : (
         <>
           {/* 原有的 Markdown 内容 */}
-          <MarkdownContent content={props.content} />
+          <MarkdownContent
+            content={props.content}
+            isStreaming={props.isStreaming}
+          />
 
           {/* 媒体选项选择器（移动到结尾处渲染） */}
           {(() => {
