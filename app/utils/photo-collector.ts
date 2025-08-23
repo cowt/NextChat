@@ -507,6 +507,28 @@ class PhotoCollector {
   }
 
   /**
+   * 优化的初始化方法（包含批量下载）
+   */
+  async optimizedInitialize(): Promise<void> {
+    console.log("[PhotoCollector] 开始优化初始化...");
+
+    try {
+      // 先执行标准初始化
+      await this.initialize();
+
+      // 然后执行优化的批量下载
+      console.log("[PhotoCollector] 开始优化批量下载...");
+      const downloadResult = await (
+        window as any
+      ).debugPhotoStorage.optimizedBatchDownload(3, 300);
+
+      console.log("[PhotoCollector] 优化初始化完成:", downloadResult);
+    } catch (error) {
+      console.error("[PhotoCollector] 优化初始化失败:", error);
+    }
+  }
+
+  /**
    * 预加载指定照片的邻近照片（用于预览优化）
    */
   async preloadForPreview(photoId: string): Promise<void> {

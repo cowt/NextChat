@@ -13,6 +13,7 @@ import React, {
 import styles from "./masonry-layout.module.scss";
 import { PhotoInfo } from "../utils/photo-storage";
 import HighResImage from "./high-res-image";
+import QueuedImage from "./queued-image";
 
 interface MasonryLayoutProps {
   photos: PhotoInfo[];
@@ -23,6 +24,8 @@ interface MasonryLayoutProps {
   columns?: number;
   gap?: number;
   className?: string;
+  useQueue?: boolean; // 是否使用队列图片组件
+  showQueueStatus?: boolean; // 是否显示队列状态
 }
 
 interface PhotoItem extends PhotoInfo {
@@ -40,6 +43,8 @@ export function MasonryLayout({
   columns = 3,
   gap = 8,
   className,
+  useQueue = false,
+  showQueueStatus = false,
 }: MasonryLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
@@ -197,22 +202,43 @@ export function MasonryLayout({
           onClick={() => handleImageClick(photo)}
           data-photo-id={photo.id}
         >
-          <HighResImage
-            src={photo.url}
-            thumbnail={photo.thumbUrl || photo.thumbnail}
-            alt=""
-            className={styles.photo}
-            loading="lazy"
-            maxSize={{
-              width: columnWidth * 2,
-              height: photo.calculatedHeight * 2,
-            }}
-            quality={0.7} // 进一步降低质量，提升加载速度
-            // 优化属性
-            decoding="async"
-            fetchPriority="low"
-            previewMode={false} // 网格中不预览，只显示缩略图
-          />
+          {useQueue ? (
+            <QueuedImage
+              src={photo.url}
+              thumbnail={photo.thumbUrl || photo.thumbnail}
+              alt=""
+              className={styles.photo}
+              loading="lazy"
+              maxSize={{
+                width: columnWidth * 2,
+                height: photo.calculatedHeight * 2,
+              }}
+              quality={0.7}
+              decoding="async"
+              fetchPriority="low"
+              previewMode={false}
+              priority={5} // 网格图片使用中等优先级
+              maxRetries={2}
+              retryDelay={1000}
+              showQueueStatus={showQueueStatus}
+            />
+          ) : (
+            <HighResImage
+              src={photo.url}
+              thumbnail={photo.thumbUrl || photo.thumbnail}
+              alt=""
+              className={styles.photo}
+              loading="lazy"
+              maxSize={{
+                width: columnWidth * 2,
+                height: photo.calculatedHeight * 2,
+              }}
+              quality={0.7}
+              decoding="async"
+              fetchPriority="low"
+              previewMode={false}
+            />
+          )}
 
           {/* 图片信息 */}
           {photo.width && photo.height && (
@@ -230,7 +256,7 @@ export function MasonryLayout({
         </div>
       );
     },
-    [columnWidth, gap, handleImageClick],
+    [columnWidth, gap, handleImageClick, showQueueStatus, useQueue],
   );
 
   return (

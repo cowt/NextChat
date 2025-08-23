@@ -10,8 +10,7 @@ import { MasonryLayout } from "./masonry-layout";
 
 // Icons
 import CloseIcon from "../icons/close.svg";
-import ImageIcon from "../icons/image.svg";
-import ReloadIcon from "../icons/reload.svg";
+import CloudSuccessIcon from "../icons/cloud-success.svg";
 
 export function Library() {
   const navigate = useNavigate();
@@ -21,6 +20,8 @@ export function Library() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [useQueue, setUseQueue] = useState(true); // 默认启用队列加载
+  const [isSmartCollecting, setIsSmartCollecting] = useState(false); // 智能收集状态
   const [stats, setStats] = useState({
     total: 0,
     userPhotos: 0,
@@ -214,7 +215,6 @@ export function Library() {
       <div className="window-header" data-tauri-drag-region>
         <div className="window-header-title">
           <div className="window-header-main-title">
-            <ImageIcon className={styles.titleIcon} />
             图片库 {stats.total > 0 && `(${stats.total})`}
           </div>
           {stats.total > 0 && (
@@ -226,30 +226,44 @@ export function Library() {
         <div className="window-actions">
           <div className="window-action-button">
             <IconButton
-              icon={<ReloadIcon />}
-              onClick={handleRefresh}
-              bordered
-              title="刷新"
-              disabled={isLoading}
-            />
-          </div>
-          <div className="window-action-button">
-            <IconButton
-              icon={<ImageIcon />}
+              icon={<CloudSuccessIcon />}
               onClick={async () => {
                 try {
-                  setIsLoading(true);
-                  await (window as any).debugPhotoStorage?.forceReCollect();
+                  setIsSmartCollecting(true);
+                  console.log("开始智能图片收集...");
+
+                  // 1. 确保队列加载已启用
+                  if (!useQueue) {
+                    setUseQueue(true);
+                    console.log("已启用队列加载");
+                  }
+
+                  // 2. 执行优化的重新收集
+                  await photoCollector.optimizedInitialize();
+
+                  // 3. 刷新界面
                   await handleRefresh();
+
+                  console.log("智能图片收集完成");
                 } catch (error) {
-                  console.error("强制收集失败:", error);
+                  console.error("智能收集失败:", error);
+
+                  // 如果优化收集失败，尝试强制收集作为备选方案
+                  try {
+                    console.log("尝试备选方案：强制收集...");
+                    await photoCollector.refresh();
+                    await handleRefresh();
+                    console.log("强制收集完成");
+                  } catch (fallbackError) {
+                    console.error("备选方案也失败:", fallbackError);
+                  }
                 } finally {
-                  setIsLoading(false);
+                  setIsSmartCollecting(false);
                 }
               }}
               bordered
-              title="强制收集"
-              disabled={isLoading}
+              title="智能收集 (🚀)"
+              disabled={isSmartCollecting}
             />
           </div>
           <div className="window-action-button">
@@ -265,7 +279,7 @@ export function Library() {
 
       {/* 将滚动容器 ref 挂在真正滚动的元素上 */}
       <div className={styles.library} ref={scrollContainerRef}>
-        {isLoading ? (
+        {isLoading && !isSmartCollecting ? (
           <>
             <div className={styles.loadingState}>
               <div className={styles.loadingSpinner} />
@@ -280,6 +294,14 @@ export function Library() {
           </>
         ) : (
           <>
+            {/* 智能收集进度提示 */}
+            {isSmartCollecting && (
+              <div className={styles.smartCollectingState}>
+                <div className={styles.loadingSpinner} />
+                <div className={styles.loadingText}>正在智能收集照片...</div>
+              </div>
+            )}
+
             <MasonryLayout
               photos={photos}
               onImageClick={handleImageClick}
@@ -291,6 +313,7 @@ export function Library() {
               className={styles.photoWall}
               columns={8}
               gap={6}
+              useQueue={useQueue}
             />
             {/* 移除重复的 loading 提示，MasonryLayout 内部已经有 loading 指示器 */}
           </>
@@ -303,6 +326,7 @@ export function Library() {
           initialIndex={selectedImageIndex}
           visible={viewerVisible}
           onClose={closeViewer}
+          useQueue={useQueue}
         />
       )}
     </div>

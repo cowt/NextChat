@@ -214,9 +214,9 @@ class PhotoStorage {
   }
 
   /**
-   * 下载图片数据
+   * 下载图片数据（优化版本）
    */
-  private async downloadImageData(photo: PhotoInfo): Promise<{
+  async downloadImageData(photo: PhotoInfo): Promise<{
     success: boolean;
     blob?: Blob;
     error?: string;
@@ -225,10 +225,15 @@ class PhotoStorage {
       // 设置下载状态
       await this.updatePhotoDownloadStatus(photo.id, "downloading");
 
-      // 执行下载
+      // 使用优化的下载策略
       const response = await fetch(photo.url, {
         method: "GET",
-        signal: AbortSignal.timeout(10000), // 10秒超时
+        signal: AbortSignal.timeout(15000), // 增加超时时间到15秒
+        headers: {
+          Accept: "image/*",
+          "Cache-Control": "no-cache",
+        },
+        mode: "cors", // 明确指定CORS模式
       });
 
       if (!response.ok) {
@@ -236,6 +241,11 @@ class PhotoStorage {
       }
 
       const blob = await response.blob();
+
+      // 验证图片格式
+      if (!blob.type.startsWith("image/")) {
+        throw new Error(`Invalid image format: ${blob.type}`);
+      }
 
       // 可选：计算哈希校验
       if (photo.contentHash) {
@@ -255,6 +265,9 @@ class PhotoStorage {
       return { success: true, blob };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
+
+      // 记录详细错误信息
+      console.warn(`[PhotoStorage] 下载失败 ${photo.url}:`, errorMsg);
 
       // 更新状态为失败
       await this.updatePhotoDownloadStatus(photo.id, "failed");
@@ -1164,17 +1177,158 @@ if (typeof window !== "undefined") {
       console.log("=== 强制重新收集图片 ===");
 
       try {
+        // 获取收集前的统计
+        const beforeStats = await photoStorage.getStats();
+        console.log("收集前统计:", beforeStats);
+
+        // 清空所有数据，强制重新收集
+        await photoStorage.clearPhotos();
+        console.log("已清空所有图片数据");
+
         // 重新收集
         const { photoCollector } = await import("./photo-collector");
         await photoCollector.refresh();
 
-        console.log("重新收集完成");
+        // 获取收集后的统计
+        const afterStats = await photoStorage.getStats();
+        console.log("收集后统计:", afterStats);
 
-        // 返回新的统计
-        const stats = await photoStorage.getStats();
-        return stats;
+        console.log("重新收集完成");
+        return afterStats;
       } catch (error) {
         console.error("重新收集失败:", error);
+        throw error;
+      }
+    },
+    // 新增：查看收集详情
+    getCollectionDetails: async () => {
+      console.log("=== 收集详情 ===");
+
+      try {
+        const stats = await photoStorage.getStats();
+        console.log("当前统计:", stats);
+
+        const { useChatStore } = await import("../store/chat");
+        const chatStore = useChatStore.getState();
+        const allSessions = chatStore.sessions || [];
+
+        console.log("总会话数:", allSessions.length);
+
+        // 简单统计会话中的图片数量
+        let totalImages = 0;
+        for (const session of allSessions.slice(0, 5)) {
+          const messageCount = session.messages?.length || 0;
+          console.log(`会话 ${session.id}: ${messageCount} 条消息`);
+          totalImages += messageCount; // 简化统计
+        }
+
+        console.log("前5个会话总消息数:", totalImages);
+        return { stats, totalImages, sessionCount: allSessions.length };
+      } catch (error) {
+        console.error("获取收集详情失败:", error);
+        throw error;
+      }
+    },
+    // 新增：优化批量下载
+    optimizedBatchDownload: async (maxConcurrent = 3, delayMs = 200) => {
+      console.log("=== 优化批量下载 ===");
+
+      try {
+        // 获取所有需要下载的图片
+        const allPhotos = await photoStorage.getPhotos({
+          limit: 1000,
+          offset: 0,
+        });
+
+        const photos = allPhotos.filter(
+          (photo) => !photo.downloadStatus || photo.downloadStatus === "failed",
+        );
+
+        console.log(`找到 ${photos.length} 张待下载图片`);
+
+        if (photos.length === 0) {
+          console.log("没有需要下载的图片");
+          return { success: true, downloaded: 0, failed: 0 };
+        }
+
+        // 分批处理
+        const batchSize = maxConcurrent;
+        const results = { success: 0, failed: 0, errors: [] as string[] };
+
+        for (let i = 0; i < photos.length; i += batchSize) {
+          const batch = photos.slice(i, i + batchSize);
+          console.log(
+            `处理批次 ${Math.floor(i / batchSize) + 1}/${Math.ceil(
+              photos.length / batchSize,
+            )} (${batch.length} 张图片)`,
+          );
+
+          // 并发下载当前批次
+          const batchPromises = batch.map(async (photo) => {
+            try {
+              const result = await photoStorage.downloadImageData(photo);
+              if (result.success) {
+                results.success++;
+              } else {
+                results.failed++;
+                results.errors.push(`${photo.url}: ${result.error}`);
+              }
+              return result;
+            } catch (error) {
+              results.failed++;
+              results.errors.push(`${photo.url}: ${error}`);
+              return { success: false, error: String(error) };
+            }
+          });
+
+          // 等待当前批次完成
+          await Promise.allSettled(batchPromises);
+
+          // 批次间延迟
+          if (i + batchSize < photos.length) {
+            console.log(`等待 ${delayMs}ms 后处理下一批次...`);
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+
+        console.log(
+          `批量下载完成: 成功 ${results.success}, 失败 ${results.failed}`,
+        );
+        if (results.errors.length > 0) {
+          console.log("失败详情:", results.errors.slice(0, 10)); // 只显示前10个错误
+        }
+
+        return results;
+      } catch (error) {
+        console.error("批量下载失败:", error);
+        throw error;
+      }
+    },
+    // 新增：优化重新收集
+    optimizedReCollect: async () => {
+      console.log("=== 优化重新收集图片 ===");
+
+      try {
+        // 获取收集前的统计
+        const beforeStats = await photoStorage.getStats();
+        console.log("收集前统计:", beforeStats);
+
+        // 清空所有数据，强制重新收集
+        await photoStorage.clearPhotos();
+        console.log("已清空所有图片数据");
+
+        // 使用优化的初始化方法
+        const { photoCollector } = await import("./photo-collector");
+        await photoCollector.optimizedInitialize();
+
+        // 获取收集后的统计
+        const afterStats = await photoStorage.getStats();
+        console.log("收集后统计:", afterStats);
+
+        console.log("优化重新收集完成");
+        return afterStats;
+      } catch (error) {
+        console.error("优化重新收集失败:", error);
         throw error;
       }
     },

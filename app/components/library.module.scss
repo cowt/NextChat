@@ -79,6 +79,20 @@
   color: var(--gray-600);
 }
 
+// 智能收集状态
+.smartCollectingState {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  text-align: center;
+  background: var(--gray-50);
+  border-radius: 8px;
+  margin: 16px;
+  border: 1px solid var(--gray-200);
+}
+
 // 进入页面骨架屏
 .skeletonGrid {
   display: grid;
@@ -98,6 +112,16 @@
 @keyframes skeletonShimmer {
   0% { background-position: 0% 50%; }
   100% { background-position: 200% 50%; }
+}
+
+// 队列加载按钮样式
+.activeButton {
+  background-color: var(--primary-color) !important;
+  color: white !important;
+  
+  &:hover {
+    background-color: var(--primary-color-dark) !important;
+  }
 }
 
 @keyframes spin {
