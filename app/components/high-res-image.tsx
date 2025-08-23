@@ -43,9 +43,16 @@ export function HighResImage({
   const [highResLoaded, setHighResLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const preloadRef = useRef<HTMLImageElement | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 预加载高分辨率图片 - 只在预览模式下加载
   useEffect(() => {
+    // 清理之前的超时
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
     if (!thumbnail || thumbnail === src) {
       setHighResLoaded(true);
       return;
@@ -75,7 +82,45 @@ export function HighResImage({
       setCurrentSrc(thumbnail);
       setHighResLoaded(false);
     }
+
+    // 清理函数
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
   }, [src, thumbnail, previewMode, onLoad, onError]);
+
+  // 移动端图片加载超时处理
+  useEffect(() => {
+    if (!isLoading || !currentSrc) return;
+
+    // 移动端设置更短的超时时间
+    const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+    const timeout = isMobile ? 5000 : 10000; // 移动端5秒，桌面端10秒
+
+    timeoutRef.current = setTimeout(() => {
+      if (isLoading) {
+        console.warn("[HighResImage] 移动端图片加载超时:", currentSrc);
+        setIsLoading(false);
+        setHasError(true);
+
+        // 超时后尝试降级
+        if (currentSrc === thumbnail && src) {
+          setCurrentSrc(src);
+          setHasError(false);
+        }
+      }
+    }, timeout);
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [isLoading, currentSrc, thumbnail, src]);
 
   // 处理图片加载
   const handleLoad = () => {
@@ -94,6 +139,10 @@ export function HighResImage({
     if (currentSrc === src && thumbnail) {
       // 高清图失败，降级到缩略图
       setCurrentSrc(thumbnail);
+      setHasError(false);
+    } else if (currentSrc === thumbnail && src) {
+      // 缩略图失败，尝试原图
+      setCurrentSrc(src);
       setHasError(false);
     } else {
       onError?.(new Error("Image failed to load"));
@@ -127,6 +176,8 @@ export function HighResImage({
         fetchPriority={fetchPriority}
         onLoad={handleLoad}
         onError={handleError}
+        // 移动端优化：添加crossOrigin属性
+        crossOrigin={currentSrc?.startsWith("data:") ? undefined : "anonymous"}
       />
 
       {/* 加载指示器 */}
