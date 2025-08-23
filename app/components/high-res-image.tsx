@@ -3,7 +3,7 @@
  * 支持渐进式加载：缩略图 -> 高清图
  */
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import styles from "./high-res-image.module.scss";
 
 interface HighResImageProps {
@@ -43,8 +43,6 @@ export function HighResImage({
   const [highResLoaded, setHighResLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const preloadRef = useRef<HTMLImageElement | null>(null);
-
-
 
   // 预加载高分辨率图片 - 只在预览模式下加载
   useEffect(() => {
