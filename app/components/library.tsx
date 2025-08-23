@@ -235,6 +235,25 @@ export function Library() {
           </div>
           <div className="window-action-button">
             <IconButton
+              icon={<ImageIcon />}
+              onClick={async () => {
+                try {
+                  setIsLoading(true);
+                  await (window as any).debugPhotoStorage?.forceReCollect();
+                  await handleRefresh();
+                } catch (error) {
+                  console.error("强制收集失败:", error);
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              bordered
+              title="强制收集"
+              disabled={isLoading}
+            />
+          </div>
+          <div className="window-action-button">
+            <IconButton
               icon={<CloseIcon />}
               onClick={() => navigate(Path.Home)}
               bordered

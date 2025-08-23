@@ -102,7 +102,6 @@ export function HighResImage({
 
     timeoutRef.current = setTimeout(() => {
       if (isLoading) {
-        console.warn("[HighResImage] 移动端图片加载超时:", currentSrc);
         setIsLoading(false);
         setHasError(true);
 

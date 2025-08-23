@@ -1159,36 +1159,24 @@ if (typeof window !== "undefined") {
     preloadNeighborPhotos: (photoId: string) =>
       photoStorage.preloadNeighborPhotos(photoId),
     cleanupInvalidStatus: () => photoStorage.cleanupInvalidDownloadStatus(),
-    // 新增：检查图片加载状态
-    checkImageLoading: () => {
-      const images = document.querySelectorAll("img");
-      const loadingImages = Array.from(images).filter(
-        (img) => img.src && !img.complete && img.naturalWidth === 0,
-      );
-      console.log(`当前正在加载的图片数量: ${loadingImages.length}`);
-      return loadingImages.length;
-    },
-    // 新增：检查缩略图状态
-    checkThumbnailStatus: async () => {
-      const photos = await photoStorage.getPhotos({ limit: 10, offset: 0 });
-      const withThumbnail = photos.filter((p) => p.thumbUrl || p.thumbnail);
-      const withoutThumbnail = photos.filter(
-        (p) => !p.thumbUrl && !p.thumbnail,
-      );
-      console.log(`有缩略图的照片: ${withThumbnail.length}`);
-      console.log(`无缩略图的照片: ${withoutThumbnail.length}`);
-      return {
-        withThumbnail: withThumbnail.length,
-        withoutThumbnail: withoutThumbnail.length,
-      };
-    },
-    // 新增：性能测试
-    performanceTest: async () => {
-      const start = performance.now();
-      const photos = await photoStorage.getPhotos({ limit: 50, offset: 0 });
-      const end = performance.now();
-      console.log(`加载50张照片耗时: ${end - start}ms`);
-      return { time: end - start, count: photos.length };
+    // 新增：强制重新收集图片
+    forceReCollect: async () => {
+      console.log("=== 强制重新收集图片 ===");
+
+      try {
+        // 重新收集
+        const { photoCollector } = await import("./photo-collector");
+        await photoCollector.refresh();
+
+        console.log("重新收集完成");
+
+        // 返回新的统计
+        const stats = await photoStorage.getStats();
+        return stats;
+      } catch (error) {
+        console.error("重新收集失败:", error);
+        throw error;
+      }
     },
   };
 }
