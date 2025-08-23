@@ -60,11 +60,11 @@ class ImageQueueManager {
   };
 
   // 配置选项
-  private readonly maxConcurrent = 3; // 最大并发数
-  private readonly requestDelay = 200; // 请求间隔（毫秒）
+  private maxConcurrent = 3; // 最大并发数
+  private requestDelay = 200; // 请求间隔（毫秒）
   private readonly defaultMaxRetries = 2;
   private readonly defaultRetryDelay = 1000;
-  private readonly maxQueueSize = 100; // 最大队列长度
+  private maxQueueSize = 100; // 最大队列长度
 
   private isProcessing = false;
   private processingTimer: NodeJS.Timeout | null = null;
