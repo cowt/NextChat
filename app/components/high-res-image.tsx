@@ -3,7 +3,7 @@
  * 支持渐进式加载：缩略图 -> 高清图
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import styles from "./high-res-image.module.scss";
 
 interface HighResImageProps {
@@ -17,6 +17,9 @@ interface HighResImageProps {
   onError?: (error: Error) => void;
   quality?: number; // 图片质量 0-1
   maxSize?: { width: number; height: number }; // 最大尺寸
+  decoding?: "sync" | "async" | "auto"; // 图片解码方式
+  fetchPriority?: "high" | "low" | "auto"; // 获取优先级
+  previewMode?: boolean; // 是否为预览模式，预览模式下才加载高清图
 }
 
 export function HighResImage({
@@ -30,6 +33,9 @@ export function HighResImage({
   onError,
   quality = 0.9,
   maxSize,
+  decoding = "async",
+  fetchPriority = "auto",
+  previewMode = false,
 }: HighResImageProps) {
   const [currentSrc, setCurrentSrc] = useState(thumbnail || src);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,15 +44,17 @@ export function HighResImage({
   const imgRef = useRef<HTMLImageElement>(null);
   const preloadRef = useRef<HTMLImageElement | null>(null);
 
-  // 预加载高分辨率图片
+
+
+  // 预加载高分辨率图片 - 只在预览模式下加载
   useEffect(() => {
     if (!thumbnail || thumbnail === src) {
       setHighResLoaded(true);
       return;
     }
 
-    // 当缩略图加载完成且可见时，开始预加载高清图
-    if (!isLoading && currentSrc === thumbnail) {
+    if (previewMode) {
+      // 预览模式下，加载高清图
       const preloadHighRes = () => {
         preloadRef.current = new Image();
         preloadRef.current.onload = () => {
@@ -59,30 +67,17 @@ export function HighResImage({
           setHighResLoaded(true);
           onError?.(new Error("High resolution image failed to load"));
         };
-        // 若是 /api/cache/* 地址，直接尝试加载；失败时不再报错干扰显示
         preloadRef.current.src = src;
       };
 
-      // 使用 Intersection Observer 检测图片是否在视口中
-      if (imgRef.current && "IntersectionObserver" in window) {
-        const observer = new IntersectionObserver(
-          (entries) => {
-            if (entries[0].isIntersecting) {
-              preloadHighRes();
-              observer.disconnect();
-            }
-          },
-          { threshold: 0.1 },
-        );
-        observer.observe(imgRef.current);
-
-        return () => observer.disconnect();
-      } else {
-        // 降级方案：直接预加载
-        setTimeout(preloadHighRes, 100);
-      }
+      // 延迟加载，避免阻塞缩略图显示
+      setTimeout(preloadHighRes, 100);
+    } else {
+      // 非预览模式下，只显示缩略图
+      setCurrentSrc(thumbnail);
+      setHighResLoaded(false);
     }
-  }, [src, thumbnail, currentSrc, isLoading, onLoad, onError]);
+  }, [src, thumbnail, previewMode, onLoad, onError]);
 
   // 处理图片加载
   const handleLoad = () => {
@@ -130,6 +125,8 @@ export function HighResImage({
         }`}
         style={getOptimizedStyle()}
         loading={loading}
+        decoding={decoding}
+        fetchPriority={fetchPriority}
         onLoad={handleLoad}
         onError={handleError}
       />

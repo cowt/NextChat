@@ -47,8 +47,8 @@ export function Library() {
 
       // 设置超时机制，避免无限等待
       const initPromise = photoCollector.initialize();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("初始化超时")), 10000),
+      const timeoutPromise = new Promise(
+        (_, reject) => setTimeout(() => reject(new Error("初始化超时")), 8000), // 减少超时时间
       );
 
       await Promise.race([initPromise, timeoutPromise]);
@@ -57,7 +57,8 @@ export function Library() {
 
       if (reset) {
         try {
-          newPhotos = await photoCollector.getPhotos({ limit: 50, offset: 0 });
+          // 首屏只加载12张，提升加载速度
+          newPhotos = await photoCollector.getPhotos({ limit: 12, offset: 0 });
         } catch (error) {
           console.warn("[Library] 常规获取失败，尝试紧急回退模式:", error);
           newPhotos = await photoCollector.getPhotosFromSessions();
@@ -66,7 +67,15 @@ export function Library() {
         newPhotos = await photoCollector.loadMore();
       }
 
-      const stats = await photoCollector.getStats();
+      // 异步获取统计信息，不阻塞UI
+      photoCollector
+        .getStats()
+        .then((stats) => {
+          setStats(stats);
+        })
+        .catch((error) => {
+          console.warn("[Library] 获取统计信息失败:", error);
+        });
 
       if (reset) {
         setPhotos(newPhotos);
@@ -74,9 +83,9 @@ export function Library() {
         setPhotos((prevPhotos) => [...prevPhotos, ...newPhotos]);
       }
 
-      setStats(stats);
-      // 如果返回的数量少于限制，说明没有更多了。如果 newPhotos 为空，也说明没有更多了。
-      setHasMore(newPhotos.length > 0 && newPhotos.length >= 50);
+      // 如果返回的数量少于限制，说明没有更多了
+      const limit = reset ? 12 : 20;
+      setHasMore(newPhotos.length > 0 && newPhotos.length >= limit);
     } catch (error) {
       console.error("[Library] 加载照片失败:", error);
 
@@ -100,7 +109,7 @@ export function Library() {
         setTimeout(() => {
           setIsLoadingMore(false);
           loadingLockRef.current = false; // 释放加载锁
-        }, 150); // 减少延迟时间，提高响应速度
+        }, 100); // 进一步减少延迟时间
       }
     }
   }, []);
@@ -132,15 +141,34 @@ export function Library() {
         }));
       }
     };
+
+    // 监听统计更新事件
+    const handleStatsUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<any>).detail;
+      if (detail) {
+        setStats(detail);
+      }
+    };
+
     window.addEventListener(
       "photoCollector:newPhotos",
       handleNewPhotos as EventListener,
     );
-    return () =>
+    window.addEventListener(
+      "photoCollector:statsUpdated",
+      handleStatsUpdate as EventListener,
+    );
+
+    return () => {
       window.removeEventListener(
         "photoCollector:newPhotos",
         handleNewPhotos as EventListener,
       );
+      window.removeEventListener(
+        "photoCollector:statsUpdated",
+        handleStatsUpdate as EventListener,
+      );
+    };
   }, []);
 
   // 手动刷新
@@ -158,10 +186,20 @@ export function Library() {
     await loadPhotos(false);
   }, [isLoading, isLoadingMore, hasMore, loadPhotos]);
 
-  const handleImageClick = useCallback((index: number) => {
-    setSelectedImageIndex(index);
-    setViewerVisible(true);
-  }, []);
+  const handleImageClick = useCallback(
+    (index: number) => {
+      setSelectedImageIndex(index);
+      setViewerVisible(true);
+
+      // 预加载邻近照片，优化预览体验
+      if (photos[index]) {
+        photoCollector.preloadForPreview(photos[index].id).catch((error) => {
+          console.warn("[Library] 预览预加载失败:", error);
+        });
+      }
+    },
+    [photos],
+  );
 
   const closeViewer = useCallback(() => {
     setViewerVisible(false);

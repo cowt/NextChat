@@ -195,10 +195,11 @@ export function MasonryLayout({
           className={styles.photoItem}
           style={style}
           onClick={() => handleImageClick(photo)}
+          data-photo-id={photo.id}
         >
           <HighResImage
             src={photo.url}
-            thumbnail={photo.thumbnail}
+            thumbnail={photo.thumbUrl || photo.thumbnail}
             alt=""
             className={styles.photo}
             loading="lazy"
@@ -206,7 +207,11 @@ export function MasonryLayout({
               width: columnWidth * 2,
               height: photo.calculatedHeight * 2,
             }}
-            quality={0.9}
+            quality={0.7} // 进一步降低质量，提升加载速度
+            // 优化属性
+            decoding="async"
+            fetchPriority="low"
+            previewMode={false} // 网格中不预览，只显示缩略图
           />
 
           {/* 图片信息 */}
