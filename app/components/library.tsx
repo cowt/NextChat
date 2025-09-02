@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./library.module.scss";
+import "./library-mobile.scss"; // 导入移动端全局样式
 import { IconButton } from "./button";
 import { Path } from "../constant";
 import { photoCollector } from "../utils/photo-collector";
@@ -11,6 +12,7 @@ import { MasonryLayout } from "./masonry-layout";
 // Icons
 import CloseIcon from "../icons/close.svg";
 import CloudSuccessIcon from "../icons/cloud-success.svg";
+import ReloadIcon from "../icons/reload.svg";
 
 export function Library() {
   const navigate = useNavigate();
@@ -22,12 +24,25 @@ export function Library() {
   const [hasMore, setHasMore] = useState(true);
   const [useQueue, setUseQueue] = useState(true); // 默认启用队列加载
   const [isSmartCollecting, setIsSmartCollecting] = useState(false); // 智能收集状态
+  const [isRetrying, setIsRetrying] = useState(false); // 重试状态
+  const [retryProgress, setRetryProgress] = useState({
+    current: 0,
+    total: 0,
+    success: 0,
+    failed: 0,
+  });
   const [stats, setStats] = useState({
     total: 0,
     userPhotos: 0,
     botPhotos: 0,
     sessionsWithPhotos: 0,
     lastUpdated: 0,
+  });
+  const [downloadStats, setDownloadStats] = useState({
+    total: 0,
+    downloading: 0,
+    complete: 0,
+    failed: 0,
   });
 
   // 滚动容器
@@ -76,6 +91,16 @@ export function Library() {
         })
         .catch((error) => {
           console.warn("[Library] 获取统计信息失败:", error);
+        });
+
+      // 异步获取下载状态统计
+      import("../utils/photo-storage")
+        .then(({ photoStorage }) => photoStorage.getDownloadStats())
+        .then((downloadStats) => {
+          setDownloadStats(downloadStats);
+        })
+        .catch((error) => {
+          console.warn("[Library] 获取下载状态统计失败:", error);
         });
 
       if (reset) {
@@ -178,6 +203,102 @@ export function Library() {
     await loadPhotos(true);
   }, [loadPhotos]);
 
+  // 智能重试失败图片
+  const handleSmartRetry = useCallback(async () => {
+    if (isRetrying || downloadStats.failed === 0) return;
+
+    setIsRetrying(true);
+    setRetryProgress({ current: 0, total: 0, success: 0, failed: 0 });
+
+    try {
+      console.log("[Library] 开始智能重试失败图片...");
+
+      const { photoStorage } = await import("../utils/photo-storage");
+
+      // 阶段1：重试下载失败的图片
+      const result1 = await photoStorage.smartRetryFailedImages((progress) => {
+        setRetryProgress(progress);
+      });
+
+      console.log(
+        `[Library] 智能重试(阶段1-下载失败)完成: 成功 ${result1.success}, 失败 ${result1.failed}, 跳过 ${result1.skipped}`,
+      );
+
+      // 阶段2：仅重试缺失缩略图（限制数量，避免压力过大）
+      console.log("[Library] 开始重试缺失缩略图...");
+      const result2 = await photoStorage.retryMissingThumbnails(
+        2,
+        100,
+        (progress) => {
+          setRetryProgress(progress);
+        },
+      );
+
+      console.log(
+        `[Library] 智能重试(阶段2-缩略图)完成: 成功 ${result2.success}, 失败 ${result2.failed}`,
+      );
+
+      // 重试完成后刷新数据
+      await loadPhotos(true);
+
+      // 显示结果通知
+      const totalRecovered = (result1.success || 0) + (result2.success || 0);
+      if (totalRecovered > 0) {
+        console.log(`✅ 成功恢复 ${totalRecovered} 张图片/缩略图！`);
+      }
+      const totalFailed = (result1.failed || 0) + (result2.failed || 0);
+      if (totalFailed > 0) {
+        console.warn(`⚠️ ${totalFailed} 张仍存在问题（包含图片或缩略图）`);
+      }
+      if (result1.skipped > 0) {
+        console.log(`⏭️ 跳过 ${result1.skipped} 张不适合重试的图片`);
+      }
+    } catch (error) {
+      console.error("[Library] 智能重试失败:", error);
+    } finally {
+      setIsRetrying(false);
+      setRetryProgress({ current: 0, total: 0, success: 0, failed: 0 });
+    }
+  }, [isRetrying, downloadStats.failed, loadPhotos]);
+
+  // 批量重试失败图片
+  const handleBatchRetry = useCallback(async () => {
+    if (isRetrying || downloadStats.failed === 0) return;
+
+    setIsRetrying(true);
+    setRetryProgress({ current: 0, total: 0, success: 0, failed: 0 });
+
+    try {
+      console.log("[Library] 开始批量重试失败图片...");
+
+      const { photoStorage } = await import("../utils/photo-storage");
+
+      const result = await photoStorage.retryFailedImages(2, 2, (progress) => {
+        setRetryProgress(progress);
+      });
+
+      console.log(
+        `[Library] 批量重试完成: 成功 ${result.success}, 失败 ${result.failed}`,
+      );
+
+      // 重试完成后刷新数据
+      await loadPhotos(true);
+
+      // 显示结果
+      if (result.success > 0) {
+        console.log(`✅ 成功恢复 ${result.success} 张图片！`);
+      }
+      if (result.failed > 0) {
+        console.warn(`⚠️ ${result.failed} 张图片重试失败`);
+      }
+    } catch (error) {
+      console.error("[Library] 批量重试失败:", error);
+    } finally {
+      setIsRetrying(false);
+      setRetryProgress({ current: 0, total: 0, success: 0, failed: 0 });
+    }
+  }, [isRetrying, downloadStats.failed, loadPhotos]);
+
   // 加载更多照片（带防抖锁）
   const handleLoadMore = useCallback(async () => {
     if (loadingLockRef.current) return;
@@ -216,14 +337,115 @@ export function Library() {
         <div className="window-header-title">
           <div className="window-header-main-title">
             图片库 {stats.total > 0 && `(${stats.total})`}
+            {downloadStats.failed > 0 && !isRetrying && (
+              <span
+                style={{
+                  color: "#ff6b6b",
+                  fontSize: "12px",
+                  marginLeft: "8px",
+                }}
+              >
+                {downloadStats.failed} 失败
+              </span>
+            )}
           </div>
-          {stats.total > 0 && (
+          {/* 重试进度显示在导航栏 */}
+          {isRetrying ? (
+            <div className={`window-header-sub-title ${styles.retryProgress}`}>
+              {/* 第一行：主要信息 */}
+              <div className={styles.retryMainInfo}>
+                <div className={styles.retryIconWrapper}>
+                  <div className={styles.retryIcon} />
+                </div>
+                <span className={styles.retryText}>
+                  重试失败图片 ({retryProgress.current}/{retryProgress.total})
+                </span>
+                {retryProgress.total > 0 && (
+                  <div
+                    className={styles.progressBar}
+                    style={{
+                      width: "60px",
+                      height: "3px",
+                      backgroundColor: "rgba(255, 107, 107, 0.2)",
+                      borderRadius: "2px",
+                      overflow: "hidden",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${
+                          (retryProgress.current / retryProgress.total) * 100
+                        }%`,
+                        height: "100%",
+                        backgroundColor: "#ff6b6b",
+                        transition: "width 0.3s ease",
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+              {/* 结果统计，与主信息同一行右侧显示 */}
+              <div className={styles.retryStats}>
+                {retryProgress.success > 0 && (
+                  <span style={{ color: "#4CAF50", fontSize: "10px" }}>
+                    ✓ {retryProgress.success}
+                  </span>
+                )}
+                {retryProgress.failed > 0 && (
+                  <span style={{ color: "#f44336", fontSize: "10px" }}>
+                    ✗ {retryProgress.failed}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : stats.total > 0 ? (
             <div className="window-header-sub-title">
               来自 {stats.sessionsWithPhotos} 个对话
+              {downloadStats.total > 0 && (
+                <span
+                  style={{ marginLeft: "8px", fontSize: "11px", opacity: 0.7 }}
+                >
+                  • 完成 {downloadStats.complete}/{downloadStats.total}
+                  {downloadStats.downloading > 0 &&
+                    ` • 下载中 ${downloadStats.downloading}`}
+                </span>
+              )}
             </div>
-          )}
+          ) : null}
         </div>
         <div className="window-actions">
+          {/* 智能重试按钮 - 只在有失败图片时显示 */}
+          {downloadStats.failed > 0 && (
+            <div className="window-action-button">
+              <IconButton
+                icon={
+                  isRetrying ? (
+                    <div className={styles.retryIconWrapper}>
+                      <div className={styles.retryIcon} />
+                    </div>
+                  ) : (
+                    <ReloadIcon />
+                  )
+                }
+                onClick={handleSmartRetry}
+                bordered
+                title={
+                  isRetrying
+                    ? `重试中... (${retryProgress.current}/${retryProgress.total})`
+                    : `智能重试 (${downloadStats.failed} 失败)`
+                }
+                disabled={isRetrying || isSmartCollecting}
+                style={{
+                  overflow: "visible", // 允许旋转图标不被裁剪
+                  color: isRetrying ? "#999" : "#ff6b6b",
+                  borderColor: isRetrying ? "#999" : "#ff6b6b",
+                  opacity: isRetrying ? 0.7 : 1,
+                }}
+              />
+            </div>
+          )}
+
           <div className="window-action-button">
             <IconButton
               icon={<CloudSuccessIcon />}
@@ -263,7 +485,7 @@ export function Library() {
               }}
               bordered
               title="智能收集 (🚀)"
-              disabled={isSmartCollecting}
+              disabled={isSmartCollecting || isRetrying}
             />
           </div>
           <div className="window-action-button">

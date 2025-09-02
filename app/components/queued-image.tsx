@@ -13,6 +13,10 @@ import {
 } from "../utils/image-queue-manager";
 import { ImageLoadResult } from "../utils/image-manager";
 
+// 1x1 transparent placeholder，避免无缩略图时触发原图加载
+const PLACEHOLDER_SRC =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
 interface QueuedImageProps {
   src: string;
   thumbnail?: string;
@@ -52,7 +56,7 @@ export function QueuedImage({
   retryDelay = 1000,
   showQueueStatus = false,
 }: QueuedImageProps) {
-  const [currentSrc, setCurrentSrc] = useState(thumbnail || src);
+  const [currentSrc, setCurrentSrc] = useState(thumbnail || PLACEHOLDER_SRC);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [highResLoaded, setHighResLoaded] = useState(false);
@@ -77,15 +81,15 @@ export function QueuedImage({
 
   // 加载高分辨率图片
   const loadHighResImage = useCallback(async () => {
-    if (!thumbnail || thumbnail === src) {
-      setHighResLoaded(true);
+    if (!previewMode) {
+      // 非预览模式下，只显示缩略图
+      setCurrentSrc(thumbnail || PLACEHOLDER_SRC);
+      setHighResLoaded(false);
       return;
     }
 
-    if (!previewMode) {
-      // 非预览模式下，只显示缩略图
-      setCurrentSrc(thumbnail);
-      setHighResLoaded(false);
+    // 如果已经加载过高清图，不重复加载
+    if (highResLoaded && currentSrc !== (thumbnail || PLACEHOLDER_SRC)) {
       return;
     }
 
@@ -105,10 +109,12 @@ export function QueuedImage({
         maxRetries,
         retryDelay,
         onProgress: (progress) => {
-          setLoadProgress(progress);
+          if (!loadAbortRef.current?.signal.aborted) {
+            setLoadProgress(progress);
+          }
         },
         onLoad: (result: ImageLoadResult) => {
-          if (result.dataUrl) {
+          if (!loadAbortRef.current?.signal.aborted && result.dataUrl) {
             setCurrentSrc(result.dataUrl);
             setHighResLoaded(true);
             setLoadProgress(100);
@@ -116,29 +122,37 @@ export function QueuedImage({
           }
         },
         onError: (error: string) => {
-          console.warn(`高清图片加载失败，保持使用缩略图: ${src}`, error);
-          setHasError(true);
-          onError?.(new Error(error));
+          if (!loadAbortRef.current?.signal.aborted) {
+            console.warn(`高清图片加载失败，保持使用缩略图: ${src}`, error);
+            setHasError(true);
+            onError?.(new Error(error));
+          }
         },
       };
 
       const result = await imageQueueManager.loadImage(src, queueOptions);
 
-      if (result.dataUrl) {
-        setCurrentSrc(result.dataUrl);
-        setHighResLoaded(true);
-        setLoadProgress(100);
-        onLoad?.();
-      } else if (result.error) {
-        setHasError(true);
-        onError?.(new Error(result.error));
+      if (!loadAbortRef.current?.signal.aborted) {
+        if (result.dataUrl) {
+          setCurrentSrc(result.dataUrl);
+          setHighResLoaded(true);
+          setLoadProgress(100);
+          onLoad?.();
+        } else if (result.error) {
+          setHasError(true);
+          onError?.(new Error(result.error));
+        }
       }
     } catch (error) {
-      console.warn(`高清图片加载失败，保持使用缩略图: ${src}`, error);
-      setHasError(true);
-      onError?.(error instanceof Error ? error : new Error("Unknown error"));
+      if (!loadAbortRef.current?.signal.aborted) {
+        console.warn(`高清图片加载失败，保持使用缩略图: ${src}`, error);
+        setHasError(true);
+        onError?.(error instanceof Error ? error : new Error("Unknown error"));
+      }
     } finally {
-      setIsLoading(false);
+      if (!loadAbortRef.current?.signal.aborted) {
+        setIsLoading(false);
+      }
       loadAbortRef.current = null;
     }
   }, [
@@ -151,6 +165,8 @@ export function QueuedImage({
     retryDelay,
     onLoad,
     onError,
+    highResLoaded,
+    currentSrc,
   ]);
 
   // 监听预览模式变化
@@ -167,14 +183,14 @@ export function QueuedImage({
       loadAbortRef.current = null;
     }
 
-    if (previewMode) {
-      // 预览模式下，延迟加载高清图
+    if (previewMode && !highResLoaded) {
+      // 预览模式下，延迟加载高清图（只在未加载时）
       timeoutRef.current = setTimeout(() => {
         loadHighResImage();
       }, 100);
     } else {
       // 非预览模式下，只显示缩略图
-      setCurrentSrc(thumbnail || src);
+      setCurrentSrc(thumbnail || PLACEHOLDER_SRC);
       setHighResLoaded(false);
       setIsLoading(false);
     }
@@ -190,7 +206,7 @@ export function QueuedImage({
         loadAbortRef.current = null;
       }
     };
-  }, [previewMode, loadHighResImage, thumbnail, src]);
+  }, [previewMode, loadHighResImage, thumbnail, src, highResLoaded]);
 
   // 移动端图片加载超时处理
   useEffect(() => {
@@ -205,9 +221,9 @@ export function QueuedImage({
         setIsLoading(false);
         setHasError(true);
 
-        // 超时后尝试降级
-        if (currentSrc === thumbnail && src) {
-          setCurrentSrc(src);
+        // 超时后降级到占位图，避免触发原图
+        if (currentSrc === thumbnail) {
+          setCurrentSrc(PLACEHOLDER_SRC);
           setHasError(false);
         }
       }
@@ -287,6 +303,7 @@ export function QueuedImage({
         width={maxSize?.width || 800}
         height={maxSize?.height || 600}
         quality={quality * 100}
+        unoptimized
       />
 
       {/* 加载指示器 */}

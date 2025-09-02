@@ -1,0 +1,69 @@
+// 图片库移动端适配样式
+// 这是全局样式文件，用于处理无法在CSS模块中使用的全局选择器
+
+// 平板端适配 (≤768px)
+@media (max-width: 768px) {
+  // 导航栏标题区域优化
+  .window-header-title {
+    flex: 1;
+    min-width: 0; // 允许收缩
+    
+    .window-header-main-title {
+      font-size: 16px;
+      
+      span {
+        font-size: 10px !important;
+      }
+    }
+  }
+  
+  // 导航栏按钮区域优化
+  .window-actions {
+    flex-shrink: 0;
+    gap: 4px;
+    
+    .window-action-button {
+      min-width: 32px;
+      height: 32px;
+      
+      // 只缩放 SVG 图标，避免影响自定义加载器容器
+      svg {
+        width: 14px !important;
+        height: 14px !important;
+      }
+      
+      // 不要直接限制 div，保留自定义图标/动画的尺寸
+    }
+  }
+}
+
+// 手机端进一步优化 (≤480px)
+@media (max-width: 480px) {
+  // 导航栏标题进一步缩小
+  .window-header-title {
+    .window-header-main-title {
+      font-size: 14px;
+      
+      span {
+        font-size: 9px !important;
+      }
+    }
+  }
+  
+  // 按钮进一步缩小
+  .window-actions {
+    gap: 2px;
+    
+    .window-action-button {
+      min-width: 28px;
+      height: 28px;
+      padding: 4px;
+      
+      // 只缩放 SVG 图标
+      svg {
+        width: 12px !important;
+        height: 12px !important;
+      }
+    }
+  }
+}

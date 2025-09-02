@@ -51,6 +51,38 @@ class PhotoStorage {
   private isInitialized = false;
 
   /**
+   * 将跨域图片 URL 路由到本地代理，避免 CORS 限制和画布污染
+   */
+  private getProxiedImageUrl(originalUrl: string): string {
+    try {
+      if (!originalUrl) return originalUrl;
+      // 已是代理地址或数据/本地 URL，直接返回
+      if (
+        originalUrl.startsWith("/api/images/proxy?") ||
+        originalUrl.startsWith("data:") ||
+        originalUrl.startsWith("blob:") ||
+        originalUrl.startsWith("file:")
+      ) {
+        return originalUrl;
+      }
+
+      // 非绝对 URL（相对同源），直接使用
+      const maybeAbsolute = /^(https?:)?\/\//i.test(originalUrl);
+      if (!maybeAbsolute) return originalUrl;
+
+      const urlObj = new URL(originalUrl);
+      const sameOrigin =
+        typeof window !== "undefined" &&
+        urlObj.origin === window.location.origin;
+      if (sameOrigin) return originalUrl;
+
+      return `/api/images/proxy?url=${encodeURIComponent(originalUrl)}`;
+    } catch {
+      return originalUrl;
+    }
+  }
+
+  /**
    * 初始化数据库
    */
   async initialize(): Promise<void> {
@@ -214,26 +246,159 @@ class PhotoStorage {
   }
 
   /**
-   * 下载图片数据（优化版本）
+   * 错误分类：判断是否应该重试
    */
-  async downloadImageData(photo: PhotoInfo): Promise<{
+  private shouldRetryDownload(
+    error: string,
+    attempt: number,
+    maxRetries: number,
+  ): boolean {
+    // 不应重试的错误类型
+    const nonRetryableErrors = [
+      "404",
+      "403",
+      "401", // HTTP客户端错误
+      "Invalid image format", // 格式错误
+      "Hash verification failed", // 哈希校验失败
+      "not found",
+      "forbidden",
+      "unauthorized",
+    ];
+
+    const errorLower = error.toLowerCase();
+    if (
+      nonRetryableErrors.some((err) => errorLower.includes(err.toLowerCase()))
+    ) {
+      return false;
+    }
+
+    // 可重试的错误类型（网络相关）
+    const retryableErrors = [
+      "timeout",
+      "network",
+      "fetch",
+      "cors",
+      "connection",
+      "500",
+      "502",
+      "503",
+      "504", // HTTP服务器错误
+      "aborted",
+      "failed to fetch",
+    ];
+
+    return (
+      retryableErrors.some((err) => errorLower.includes(err.toLowerCase())) &&
+      attempt < maxRetries
+    );
+  }
+
+  /**
+   * 下载图片数据（带重试机制的版本）
+   */
+  async downloadImageDataWithRetry(
+    photo: PhotoInfo,
+    maxRetries: number = 3,
+    baseDelay: number = 1000,
+  ): Promise<{
+    success: boolean;
+    blob?: Blob;
+    error?: string;
+    attempts: number;
+  }> {
+    let lastError = "";
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await this.downloadImageDataSingle(photo, attempt);
+
+        if (result.success) {
+          // 成功时记录重试信息
+          if (attempt > 0) {
+            console.log(
+              `[PhotoStorage] 重试成功 ${photo.url} (尝试 ${attempt + 1}/${
+                maxRetries + 1
+              })`,
+            );
+          }
+          return { ...result, attempts: attempt + 1 };
+        }
+
+        lastError = result.error || "Unknown error";
+
+        // 检查是否应该重试
+        if (this.shouldRetryDownload(lastError, attempt, maxRetries)) {
+          const delay = baseDelay * Math.pow(2, attempt); // 指数退避
+          console.warn(
+            `[PhotoStorage] 下载失败，${delay}ms后重试 (${attempt + 1}/${
+              maxRetries + 1
+            }): ${photo.url}`,
+            lastError,
+          );
+
+          // 更新重试状态
+          await this.updatePhotoData(photo.id, {
+            downloadStatus: "downloading",
+            lastChecked: Date.now(),
+          });
+
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        } else {
+          // 不应重试的错误，直接返回
+          console.warn(
+            `[PhotoStorage] 不可重试的错误: ${photo.url}`,
+            lastError,
+          );
+          await this.updatePhotoDownloadStatus(photo.id, "failed");
+          return { success: false, error: lastError, attempts: attempt + 1 };
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "Unknown error";
+
+        if (attempt === maxRetries) {
+          console.error(`[PhotoStorage] 最终下载失败 ${photo.url}:`, lastError);
+          await this.updatePhotoDownloadStatus(photo.id, "failed");
+          return { success: false, error: lastError, attempts: attempt + 1 };
+        }
+      }
+    }
+
+    // 理论上不会到达这里
+    await this.updatePhotoDownloadStatus(photo.id, "failed");
+    return { success: false, error: lastError, attempts: maxRetries + 1 };
+  }
+
+  /**
+   * 单次下载尝试（从原 downloadImageData 重构）
+   */
+  private async downloadImageDataSingle(
+    photo: PhotoInfo,
+    attempt: number,
+  ): Promise<{
     success: boolean;
     blob?: Blob;
     error?: string;
   }> {
     try {
       // 设置下载状态
-      await this.updatePhotoDownloadStatus(photo.id, "downloading");
+      if (attempt === 0) {
+        await this.updatePhotoDownloadStatus(photo.id, "downloading");
+      }
 
-      // 使用优化的下载策略
-      const response = await fetch(photo.url, {
+      // 根据重试次数调整超时时间
+      const timeout = Math.min(15000 + attempt * 5000, 30000); // 15s -> 20s -> 25s -> 30s
+
+      // 使用代理后的 URL，避免 CORS
+      const proxiedUrl = this.getProxiedImageUrl(photo.url);
+      const response = await fetch(proxiedUrl, {
         method: "GET",
-        signal: AbortSignal.timeout(15000), // 增加超时时间到15秒
+        signal: AbortSignal.timeout(timeout),
         headers: {
           Accept: "image/*",
-          "Cache-Control": "no-cache",
+          "Cache-Control": attempt === 0 ? "no-cache" : "max-age=0", // 重试时使用更强的缓存控制
         },
-        mode: "cors", // 明确指定CORS模式
+        mode: "cors",
       });
 
       if (!response.ok) {
@@ -265,15 +430,24 @@ class PhotoStorage {
       return { success: true, blob };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
-
-      // 记录详细错误信息
-      console.warn(`[PhotoStorage] 下载失败 ${photo.url}:`, errorMsg);
-
-      // 更新状态为失败
-      await this.updatePhotoDownloadStatus(photo.id, "failed");
-
       return { success: false, error: errorMsg };
     }
+  }
+
+  /**
+   * 下载图片数据（保持向后兼容）
+   */
+  async downloadImageData(photo: PhotoInfo): Promise<{
+    success: boolean;
+    blob?: Blob;
+    error?: string;
+  }> {
+    const result = await this.downloadImageDataWithRetry(photo, 2, 1000);
+    return {
+      success: result.success,
+      blob: result.blob,
+      error: result.error,
+    };
   }
 
   /**
@@ -368,7 +542,8 @@ class PhotoStorage {
       img.onerror = () => {
         reject(new Error("Failed to load image"));
       };
-      img.src = url;
+      img.crossOrigin = "anonymous";
+      img.src = this.getProxiedImageUrl(url);
     });
   }
 
@@ -426,7 +601,7 @@ class PhotoStorage {
         reject(new Error("Failed to load image for thumbnail"));
       };
       img.crossOrigin = "anonymous";
-      img.src = url;
+      img.src = this.getProxiedImageUrl(url);
     });
   }
 
@@ -478,7 +653,7 @@ class PhotoStorage {
         reject(new Error("Failed to load image for hash calculation"));
       };
       img.crossOrigin = "anonymous";
-      img.src = url;
+      img.src = this.getProxiedImageUrl(url);
     });
   }
 
@@ -1103,6 +1278,301 @@ class PhotoStorage {
   }
 
   /**
+   * 获取指定下载状态的图片
+   */
+  async getPhotosByDownloadStatus(
+    status: "downloading" | "complete" | "failed",
+  ): Promise<PhotoInfo[]> {
+    await this.initialize();
+
+    try {
+      return await this.executeTransaction(
+        this.STORE_NAME,
+        "readonly",
+        (store) => {
+          const index = store.index("downloadStatus");
+          return index.getAll(status);
+        },
+      );
+    } catch (error) {
+      console.error(`[PhotoStorage] 获取 ${status} 状态图片失败:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * 批量重试失败的图片
+   */
+  async retryFailedImages(
+    maxConcurrent: number = 2,
+    maxRetries: number = 2,
+    onProgress?: (progress: {
+      current: number;
+      total: number;
+      success: number;
+      failed: number;
+    }) => void,
+  ): Promise<{
+    total: number;
+    success: number;
+    failed: number;
+    errors: string[];
+  }> {
+    console.log("[PhotoStorage] 开始批量重试失败图片...");
+
+    const failedPhotos = await this.getPhotosByDownloadStatus("failed");
+    const results = {
+      total: failedPhotos.length,
+      success: 0,
+      failed: 0,
+      errors: [] as string[],
+    };
+
+    if (failedPhotos.length === 0) {
+      console.log("[PhotoStorage] 没有失败的图片需要重试");
+      return results;
+    }
+
+    console.log(
+      `[PhotoStorage] 找到 ${failedPhotos.length} 张失败图片，开始重试...`,
+    );
+
+    // 分批处理，避免过多并发
+    for (let i = 0; i < failedPhotos.length; i += maxConcurrent) {
+      const batch = failedPhotos.slice(i, i + maxConcurrent);
+
+      const batchPromises = batch.map(async (photo) => {
+        try {
+          const result = await this.downloadImageDataWithRetry(
+            photo,
+            maxRetries,
+            1500,
+          );
+
+          if (result.success) {
+            results.success++;
+            console.log(`[PhotoStorage] 重试成功: ${photo.url}`);
+          } else {
+            results.failed++;
+            results.errors.push(`${photo.url}: ${result.error}`);
+            console.warn(`[PhotoStorage] 重试失败: ${photo.url}`, result.error);
+          }
+
+          // 更新进度
+          onProgress?.({
+            current: results.success + results.failed,
+            total: results.total,
+            success: results.success,
+            failed: results.failed,
+          });
+        } catch (error) {
+          results.failed++;
+          const errorMsg =
+            error instanceof Error ? error.message : "Unknown error";
+          results.errors.push(`${photo.url}: ${errorMsg}`);
+          console.error(`[PhotoStorage] 重试异常: ${photo.url}`, error);
+        }
+      });
+
+      await Promise.allSettled(batchPromises);
+
+      // 批次间延迟，避免服务器压力过大
+      if (i + maxConcurrent < failedPhotos.length) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      }
+    }
+
+    console.log(
+      `[PhotoStorage] 批量重试完成: 成功 ${results.success}, 失败 ${results.failed}`,
+    );
+    return results;
+  }
+
+  /**
+   * 智能重试：只重试可能成功的失败图片
+   */
+  async smartRetryFailedImages(
+    onProgress?: (progress: {
+      current: number;
+      total: number;
+      success: number;
+      failed: number;
+    }) => void,
+  ): Promise<{
+    total: number;
+    success: number;
+    failed: number;
+    skipped: number;
+    errors: string[];
+  }> {
+    console.log("[PhotoStorage] 开始智能重试失败图片...");
+
+    const failedPhotos = await this.getPhotosByDownloadStatus("failed");
+    const results = {
+      total: failedPhotos.length,
+      success: 0,
+      failed: 0,
+      skipped: 0,
+      errors: [] as string[],
+    };
+
+    if (failedPhotos.length === 0) {
+      return results;
+    }
+
+    // 过滤出可能重试成功的图片（排除永久性错误）
+    const retryablePhotos = failedPhotos.filter((photo) => {
+      // 检查最后检查时间，如果太近则跳过
+      const timeSinceLastCheck = Date.now() - (photo.lastChecked || 0);
+      if (timeSinceLastCheck < 5 * 60 * 1000) {
+        // 5分钟内检查过的跳过
+        return false;
+      }
+
+      // 可以添加更多智能过滤逻辑，比如根据URL模式、历史成功率等
+      return true;
+    });
+
+    results.skipped = failedPhotos.length - retryablePhotos.length;
+
+    if (retryablePhotos.length === 0) {
+      console.log("[PhotoStorage] 没有适合智能重试的图片");
+      return results;
+    }
+
+    console.log(
+      `[PhotoStorage] 智能过滤后需重试 ${retryablePhotos.length} 张图片`,
+    );
+
+    // 使用较低的并发数和更高的重试次数
+    for (const photo of retryablePhotos) {
+      try {
+        const result = await this.downloadImageDataWithRetry(photo, 3, 2000);
+
+        if (result.success) {
+          results.success++;
+        } else {
+          results.failed++;
+          results.errors.push(`${photo.url}: ${result.error}`);
+        }
+
+        onProgress?.({
+          current: results.success + results.failed,
+          total: retryablePhotos.length,
+          success: results.success,
+          failed: results.failed,
+        });
+
+        // 每张图片间添加延迟
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (error) {
+        results.failed++;
+        const errorMsg =
+          error instanceof Error ? error.message : "Unknown error";
+        results.errors.push(`${photo.url}: ${errorMsg}`);
+      }
+    }
+
+    console.log(
+      `[PhotoStorage] 智能重试完成: 成功 ${results.success}, 失败 ${results.failed}, 跳过 ${results.skipped}`,
+    );
+    return results;
+  }
+
+  /**
+   * 部分重试：仅针对缺少缩略图的图片，按批次重试生成缩略图
+   */
+  async retryMissingThumbnails(
+    maxConcurrent: number = 2,
+    maxCount: number = 50,
+    onProgress?: (progress: {
+      current: number;
+      total: number;
+      success: number;
+      failed: number;
+    }) => void,
+  ): Promise<{
+    total: number;
+    success: number;
+    failed: number;
+    errors: string[];
+  }> {
+    await this.initialize();
+
+    // 找出没有缩略图且可能已下载完成的图片
+    const allPhotos = await this.executeTransaction(
+      this.STORE_NAME,
+      "readonly",
+      (store) => store.getAll(),
+    );
+
+    const candidates = allPhotos
+      .filter((p) => !p.thumbUrl && !p.thumbnail)
+      .filter((p) => p.downloadStatus === "complete" || !!p.blob)
+      .slice(0, Math.max(0, maxCount));
+
+    const result = {
+      total: candidates.length,
+      success: 0,
+      failed: 0,
+      errors: [] as string[],
+    };
+
+    if (candidates.length === 0) return result;
+
+    // 分批并发重试
+    for (let i = 0; i < candidates.length; i += maxConcurrent) {
+      const batch = candidates.slice(i, i + maxConcurrent);
+
+      const batchJobs = batch.map(async (photo) => {
+        try {
+          // 优先用 URL 重新生成缩略图（内部已使用代理 + crossOrigin）
+          const { thumbnail, thumbUrl, width, height } =
+            await this.generateThumbnail(photo.url);
+
+          const updates: Partial<PhotoInfo> = {
+            thumbnail,
+            thumbUrl,
+            thumbWidth: width,
+            thumbHeight: height,
+          };
+
+          // 如果缺少尺寸信息，顺便补齐
+          if (!photo.width || !photo.height) {
+            try {
+              const dim = await this.getImageDimensions(photo.url);
+              updates.width = dim.width;
+              updates.height = dim.height;
+            } catch (_) {}
+          }
+
+          await this.updatePhotoData(photo.id, updates);
+          result.success++;
+        } catch (err) {
+          result.failed++;
+          const msg = err instanceof Error ? err.message : String(err);
+          result.errors.push(`${photo.url}: ${msg}`);
+        } finally {
+          onProgress?.({
+            current: result.success + result.failed,
+            total: result.total,
+            success: result.success,
+            failed: result.failed,
+          });
+        }
+      });
+
+      await Promise.allSettled(batchJobs);
+      // 批次间短暂休息，降低压力
+      if (i + maxConcurrent < candidates.length) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * 获取下载状态统计
    */
   async getDownloadStats(): Promise<{
@@ -1329,6 +1799,111 @@ if (typeof window !== "undefined") {
         return afterStats;
       } catch (error) {
         console.error("优化重新收集失败:", error);
+        throw error;
+      }
+    },
+    // 新增：智能重试失败图片
+    smartRetryFailed: async () => {
+      console.log("=== 智能重试失败图片 ===");
+
+      try {
+        const result = await photoStorage.smartRetryFailedImages((progress) => {
+          console.log(
+            `重试进度: ${progress.current}/${progress.total} (成功: ${progress.success}, 失败: ${progress.failed})`,
+          );
+        });
+
+        console.log(
+          `智能重试完成: 总计 ${result.total}, 成功 ${result.success}, 失败 ${result.failed}, 跳过 ${result.skipped}`,
+        );
+        if (result.errors.length > 0) {
+          console.log("错误详情:", result.errors.slice(0, 5)); // 只显示前5个错误
+        }
+
+        return result;
+      } catch (error) {
+        console.error("智能重试失败:", error);
+        throw error;
+      }
+    },
+    // 新增：批量重试失败图片
+    batchRetryFailed: async (maxConcurrent = 2, maxRetries = 2) => {
+      console.log(
+        `=== 批量重试失败图片 (并发: ${maxConcurrent}, 重试: ${maxRetries}) ===`,
+      );
+
+      try {
+        const result = await photoStorage.retryFailedImages(
+          maxConcurrent,
+          maxRetries,
+          (progress) => {
+            console.log(
+              `重试进度: ${progress.current}/${progress.total} (成功: ${progress.success}, 失败: ${progress.failed})`,
+            );
+          },
+        );
+
+        console.log(
+          `批量重试完成: 总计 ${result.total}, 成功 ${result.success}, 失败 ${result.failed}`,
+        );
+        if (result.errors.length > 0) {
+          console.log("错误详情:", result.errors.slice(0, 5)); // 只显示前5个错误
+        }
+
+        return result;
+      } catch (error) {
+        console.error("批量重试失败:", error);
+        throw error;
+      }
+    },
+    // 新增：获取失败图片详情
+    getFailedImages: async () => {
+      console.log("=== 获取失败图片详情 ===");
+
+      try {
+        const failedPhotos =
+          await photoStorage.getPhotosByDownloadStatus("failed");
+        console.log(`找到 ${failedPhotos.length} 张失败图片:`);
+
+        failedPhotos.slice(0, 10).forEach((photo, index) => {
+          console.log(`${index + 1}. ${photo.url.substring(0, 80)}...`);
+          console.log(`   会话: ${photo.sessionTitle}`);
+          console.log(
+            `   最后检查: ${new Date(photo.lastChecked || 0).toLocaleString()}`,
+          );
+        });
+
+        if (failedPhotos.length > 10) {
+          console.log(`... 还有 ${failedPhotos.length - 10} 张`);
+        }
+
+        return failedPhotos;
+      } catch (error) {
+        console.error("获取失败图片失败:", error);
+        throw error;
+      }
+    },
+    // 新增：仅重试缺失缩略图
+    retryMissingThumbnails: async (maxConcurrent = 2, maxCount = 50) => {
+      try {
+        console.log(
+          `=== 重试缺失缩略图 (并发: ${maxConcurrent}, 数量: ${maxCount}) ===`,
+        );
+        const result = await photoStorage.retryMissingThumbnails(
+          maxConcurrent,
+          maxCount,
+          (p) =>
+            console.log(
+              `缩略图重试进度: ${p.current}/${p.total} (成功:${p.success}, 失败:${p.failed})`,
+            ),
+        );
+        console.log(`重试完成: 成功 ${result.success}, 失败 ${result.failed}`);
+        if (result.errors?.length) {
+          console.log("错误示例:", result.errors.slice(0, 5));
+        }
+        return result;
+      } catch (error) {
+        console.error("重试缺失缩略图失败:", error);
         throw error;
       }
     },

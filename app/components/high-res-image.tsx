@@ -6,6 +6,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import styles from "./high-res-image.module.scss";
 
+// 1x1 transparent placeholder，避免无缩略图时触发原图加载
+const PLACEHOLDER_SRC =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
 interface HighResImageProps {
   src: string;
   thumbnail?: string;
@@ -37,7 +41,7 @@ export function HighResImage({
   fetchPriority = "auto",
   previewMode = false,
 }: HighResImageProps) {
-  const [currentSrc, setCurrentSrc] = useState(thumbnail || src);
+  const [currentSrc, setCurrentSrc] = useState(thumbnail || PLACEHOLDER_SRC);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [highResLoaded, setHighResLoaded] = useState(false);
@@ -51,11 +55,6 @@ export function HighResImage({
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
-    }
-
-    if (!thumbnail || thumbnail === src) {
-      setHighResLoaded(true);
-      return;
     }
 
     if (previewMode) {
@@ -72,6 +71,7 @@ export function HighResImage({
           setHighResLoaded(true);
           onError?.(new Error("High resolution image failed to load"));
         };
+        preloadRef.current.crossOrigin = "anonymous";
         preloadRef.current.src = src;
       };
 
@@ -79,7 +79,7 @@ export function HighResImage({
       setTimeout(preloadHighRes, 100);
     } else {
       // 非预览模式下，只显示缩略图
-      setCurrentSrc(thumbnail);
+      setCurrentSrc(thumbnail || PLACEHOLDER_SRC);
       setHighResLoaded(false);
     }
 

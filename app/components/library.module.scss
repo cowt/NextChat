@@ -93,6 +93,125 @@
   border: 1px solid var(--gray-200);
 }
 
+// 重试状态的小型加载器
+.retrySpinner {
+  flex-shrink: 0;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+}
+
+// 按钮中的重试图标包装，避免被裁剪
+.retryIconWrapper {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible; // 旋转时不裁剪
+}
+
+.retryIcon {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ff6b6b;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+// 重试进度条
+.progressBar {
+  flex-shrink: 0;
+  
+  // 移动端适配
+  @media (max-width: 768px) {
+    width: 40px !important;
+    height: 2px !important;
+  }
+  
+  @media (max-width: 480px) {
+    width: 30px !important;
+    height: 2px !important;
+  }
+}
+
+// 重试进度整体容器
+.retryProgress {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: auto;
+  
+  // 移动端优化
+  @media (max-width: 768px) {
+    gap: 6px;
+  }
+}
+
+// 重试主要信息行
+.retryMainInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap; // 防止换行
+  
+  @media (max-width: 768px) {
+    gap: 6px;
+  }
+  
+  @media (max-width: 480px) {
+    gap: 4px;
+  }
+}
+
+// 重试文本
+.retryText {
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 1; // 允许适当收缩
+  overflow: hidden;
+  text-overflow: ellipsis;
+  
+  @media (max-width: 768px) {
+    font-size: 10px;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 9px;
+    max-width: 120px; // 限制最大宽度
+  }
+}
+
+// 重试结果统计（与主信息同行）
+.retryStats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 6px;
+  
+  @media (max-width: 768px) {
+    gap: 6px;
+    margin-left: 4px;
+    
+    span {
+      font-size: 9px !important;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    gap: 4px;
+    margin-left: 14px;
+    
+    span {
+      font-size: 8px !important;
+    }
+  }
+}
+
 // 进入页面骨架屏
 .skeletonGrid {
   display: grid;
@@ -143,6 +262,22 @@
     gap: 8px;
     padding: 12px;
   }
+  
+  .retrySpinner {
+    width: 10px !important;
+    height: 10px !important;
+    border-width: 1px !important;
+  }
+  
+  // 智能收集状态在移动端更紧凑
+  .smartCollectingState {
+    margin: 8px;
+    padding: 12px;
+    
+    .loadingText {
+      font-size: 14px;
+    }
+  }
 }
 
 @media (max-width: 480px) {
@@ -150,6 +285,28 @@
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 6px;
     padding: 8px;
+  }
+  
+  .retrySpinner {
+    width: 8px !important;
+    height: 8px !important;
+    border-width: 1px !important;
+  }
+  
+  // 智能收集状态进一步紧凑
+  .smartCollectingState {
+    margin: 4px;
+    padding: 8px;
+    
+    .loadingSpinner {
+      width: 24px;
+      height: 24px;
+      margin-bottom: 8px;
+    }
+    
+    .loadingText {
+      font-size: 12px;
+    }
   }
 }
 

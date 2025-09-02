@@ -67,13 +67,25 @@ export function useImage(
 
   const onLoadRef = useRef(onLoad);
   const onErrorRef = useRef(onError);
-  onLoadRef.current = onLoad;
-  onErrorRef.current = onError;
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const lastUrlRef = useRef<string | undefined>(url);
+
+  // 更新回调引用
+  useEffect(() => {
+    onLoadRef.current = onLoad;
+    onErrorRef.current = onError;
+  }, [onLoad, onError]);
 
   const reload = useCallback(() => {
     if (!url) return;
 
+    // 取消之前的请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     setState((prev) => ({ ...prev, loading: true, error: undefined }));
+    abortControllerRef.current = new AbortController();
 
     imageManager
       .loadImage(url, {
@@ -81,30 +93,34 @@ export function useImage(
         compress,
       })
       .then((result) => {
-        setState({
-          dataUrl: result.dataUrl,
-          blob: result.blob,
-          loading: false,
-          error: result.error,
-          width: result.width,
-          height: result.height,
-        });
+        if (!abortControllerRef.current?.signal.aborted) {
+          setState({
+            dataUrl: result.dataUrl,
+            blob: result.blob,
+            loading: false,
+            error: result.error,
+            width: result.width,
+            height: result.height,
+          });
 
-        if (result.error) {
-          onErrorRef.current?.(result.error);
-        } else {
-          onLoadRef.current?.(result);
+          if (result.error) {
+            onErrorRef.current?.(result.error);
+          } else {
+            onLoadRef.current?.(result);
+          }
         }
       })
       .catch((error) => {
-        const errorMsg =
-          error instanceof Error ? error.message : "Unknown error";
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          error: errorMsg,
-        }));
-        onErrorRef.current?.(errorMsg);
+        if (!abortControllerRef.current?.signal.aborted) {
+          const errorMsg =
+            error instanceof Error ? error.message : "Unknown error";
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            error: errorMsg,
+          }));
+          onErrorRef.current?.(errorMsg);
+        }
       });
   }, [url, compress]);
 
@@ -120,22 +136,32 @@ export function useImage(
       return;
     }
 
-    let cancelled = false;
+    // 检查URL是否变化
+    const urlChanged = lastUrlRef.current !== url;
+    lastUrlRef.current = url;
+
+    // 如果URL变化，取消之前的请求
+    if (urlChanged && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
 
     const loadImage = async () => {
       // 延迟加载
       if (delay > 0) {
         await new Promise((resolve) => setTimeout(resolve, delay));
-        if (cancelled) return;
+        if (abortControllerRef.current?.signal.aborted) return;
       }
 
       try {
+        // 创建新的AbortController
+        abortControllerRef.current = new AbortController();
+
         const result = await imageManager.loadImage(url, {
           forceReload,
           compress,
         });
 
-        if (!cancelled) {
+        if (!abortControllerRef.current?.signal.aborted) {
           setState({
             dataUrl: result.dataUrl,
             blob: result.blob,
@@ -152,7 +178,7 @@ export function useImage(
           }
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!abortControllerRef.current?.signal.aborted) {
           const errorMsg =
             error instanceof Error ? error.message : "Unknown error";
           setState((prev) => ({
@@ -196,8 +222,11 @@ export function useImage(
     setState((prev) => ({ ...prev, loading: true, error: undefined }));
     loadImage();
 
+    // 清理函数
     return () => {
-      cancelled = true;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, [url, enabled, forceReload, compress, delay]);
 

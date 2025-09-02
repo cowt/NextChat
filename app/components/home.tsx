@@ -31,6 +31,7 @@ import { useAccessStore } from "../store";
 import clsx from "clsx";
 import { initializeMcpSystem, isMcpEnabled } from "../mcp/actions";
 import { photoCollector } from "../utils/photo-collector";
+import { initializeImageCacheConfig } from "../utils/image-cache-config";
 
 export function Loading(props: { noLogo?: boolean }) {
   return (
@@ -247,6 +248,9 @@ export function Home() {
 
   useEffect(() => {
     useAccessStore.getState().fetch();
+
+    // 初始化图片缓存配置
+    initializeImageCacheConfig();
 
     const initMcp = async () => {
       try {

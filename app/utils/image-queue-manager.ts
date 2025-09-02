@@ -52,6 +52,7 @@ interface QueueStats {
 class ImageQueueManager {
   private queue: QueueItem[] = [];
   private loadingItems = new Set<string>();
+  private pendingPromises = new Map<string, Promise<ImageLoadResult>>(); // 添加 Promise 缓存
   private stats = {
     totalQueued: 0,
     totalLoaded: 0,
@@ -59,12 +60,12 @@ class ImageQueueManager {
     loadTimes: [] as number[],
   };
 
-  // 配置选项
-  private maxConcurrent = 3; // 最大并发数
-  private requestDelay = 200; // 请求间隔（毫秒）
+  // 配置选项 - 优化默认值
+  private maxConcurrent = 2; // 降低最大并发数
+  private requestDelay = 300; // 增加请求间隔
   private readonly defaultMaxRetries = 2;
   private readonly defaultRetryDelay = 1000;
-  private maxQueueSize = 100; // 最大队列长度
+  private maxQueueSize = 50; // 减少最大队列长度
 
   private isProcessing = false;
   private processingTimer: NodeJS.Timeout | null = null;
@@ -72,6 +73,24 @@ class ImageQueueManager {
   constructor() {
     // 启动队列处理器
     this.startProcessing();
+  }
+
+  /**
+   * 生成标准化的缓存键
+   */
+  private generateCacheKey(url: string): string {
+    try {
+      // 移除查询参数中的时间戳，保持缓存一致性
+      const urlObj = new URL(url);
+      urlObj.searchParams.delete("t");
+      urlObj.searchParams.delete("timestamp");
+      urlObj.searchParams.delete("_");
+      const cleanUrl = urlObj.toString();
+      return btoa(encodeURIComponent(cleanUrl)).replace(/[+/=]/g, "");
+    } catch {
+      // 如果URL解析失败，直接使用原始URL
+      return btoa(encodeURIComponent(url)).replace(/[+/=]/g, "");
+    }
   }
 
   /**
@@ -89,18 +108,17 @@ class ImageQueueManager {
       retryDelay = this.defaultRetryDelay,
     } = options;
 
-    // 生成唯一ID
-    const id = `${url}-${Date.now()}-${Math.random()}`;
+    const cacheKey = this.generateCacheKey(url);
 
     // 检查队列是否已满
     if (this.queue.length >= this.maxQueueSize) {
       throw new Error("图片加载队列已满，请稍后重试");
     }
 
-    // 检查是否已经在加载中
-    if (this.loadingItems.has(url)) {
-      // 如果正在加载，等待现有请求完成
-      return this.waitForExistingLoad(url);
+    // 检查是否已有pending的Promise
+    const existingPromise = this.pendingPromises.get(cacheKey);
+    if (existingPromise && !forceReload) {
+      return existingPromise; // 直接返回同一个Promise
     }
 
     // 检查缓存
@@ -110,7 +128,11 @@ class ImageQueueManager {
       return cached;
     }
 
-    return new Promise<ImageLoadResult>((resolve, reject) => {
+    // 创建加载Promise
+    const loadPromise = new Promise<ImageLoadResult>((resolve, reject) => {
+      // 生成唯一ID
+      const id = `${cacheKey}-${Date.now()}-${Math.random()}`;
+
       const queueItem: QueueItem = {
         id,
         url,
@@ -132,6 +154,16 @@ class ImageQueueManager {
       // 触发队列处理
       this.triggerProcessing();
     });
+
+    // 缓存Promise
+    this.pendingPromises.set(cacheKey, loadPromise);
+
+    // 完成后清理Promise缓存
+    loadPromise.finally(() => {
+      this.pendingPromises.delete(cacheKey);
+    });
+
+    return loadPromise;
   }
 
   /**
@@ -219,9 +251,10 @@ class ImageQueueManager {
     const startTime = Date.now();
 
     try {
-      // 添加请求延迟
-      if (this.requestDelay > 0) {
-        await new Promise((resolve) => setTimeout(resolve, this.requestDelay));
+      // 添加请求延迟（基于网络状况动态调整）
+      const delay = this.getAdaptiveDelay();
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
       // 使用 imageManager 加载图片
@@ -373,6 +406,34 @@ class ImageQueueManager {
    */
   resume(): void {
     this.startProcessing();
+  }
+
+  /**
+   * 获取自适应延迟时间
+   */
+  private getAdaptiveDelay(): number {
+    // 基于平均加载时间动态调整延迟
+    const avgLoadTime =
+      this.stats.loadTimes.length > 0
+        ? this.stats.loadTimes.reduce((sum, time) => sum + time, 0) /
+          this.stats.loadTimes.length
+        : 0;
+
+    // 如果平均加载时间过长，增加延迟
+    if (avgLoadTime > 3000) {
+      return this.requestDelay * 2; // 慢网络时加倍延迟
+    } else if (avgLoadTime > 1500) {
+      return this.requestDelay * 1.5; // 中等网络时增加50%延迟
+    }
+
+    return this.requestDelay; // 正常延迟
+  }
+
+  /**
+   * 清空pending promises（用于重置）
+   */
+  clearPendingPromises(): void {
+    this.pendingPromises.clear();
   }
 
   /**

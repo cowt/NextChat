@@ -521,8 +521,6 @@ class PhotoCollector {
       const downloadResult = await (
         window as any
       ).debugPhotoStorage.optimizedBatchDownload(3, 300);
-
-      console.log("[PhotoCollector] 优化初始化完成:", downloadResult);
     } catch (error) {
       console.error("[PhotoCollector] 优化初始化失败:", error);
     }
