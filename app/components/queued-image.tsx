@@ -60,6 +60,7 @@ export function QueuedImage({
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [highResLoaded, setHighResLoaded] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [loadProgress, setLoadProgress] = useState(0);
 
@@ -85,6 +86,7 @@ export function QueuedImage({
       // 非预览模式下，只显示缩略图
       setCurrentSrc(thumbnail || PLACEHOLDER_SRC);
       setHighResLoaded(false);
+      setImageLoaded(true);
       return;
     }
 
@@ -96,6 +98,7 @@ export function QueuedImage({
     // 预览模式下，使用队列加载高清图
     try {
       setIsLoading(true);
+      setImageLoaded(false);
       setHasError(false);
       setLoadProgress(0);
 
@@ -116,9 +119,8 @@ export function QueuedImage({
         onLoad: (result: ImageLoadResult) => {
           if (!loadAbortRef.current?.signal.aborted && result.dataUrl) {
             setCurrentSrc(result.dataUrl);
-            setHighResLoaded(true);
             setLoadProgress(100);
-            onLoad?.();
+            // 等待 <Image> onLoad 再标记完成
           }
         },
         onError: (error: string) => {
@@ -135,9 +137,8 @@ export function QueuedImage({
       if (!loadAbortRef.current?.signal.aborted) {
         if (result.dataUrl) {
           setCurrentSrc(result.dataUrl);
-          setHighResLoaded(true);
           setLoadProgress(100);
-          onLoad?.();
+          // 等待 <Image> onLoad 再标记完成
         } else if (result.error) {
           setHasError(true);
           onError?.(new Error(result.error));
@@ -150,9 +151,7 @@ export function QueuedImage({
         onError?.(error instanceof Error ? error : new Error("Unknown error"));
       }
     } finally {
-      if (!loadAbortRef.current?.signal.aborted) {
-        setIsLoading(false);
-      }
+      // 保持 isLoading 为 true，直到 <Image> onLoad/onError 触发
       loadAbortRef.current = null;
     }
   }, [
@@ -193,6 +192,7 @@ export function QueuedImage({
       setCurrentSrc(thumbnail || PLACEHOLDER_SRC);
       setHighResLoaded(false);
       setIsLoading(false);
+      setImageLoaded(true);
     }
 
     // 清理函数
@@ -240,16 +240,19 @@ export function QueuedImage({
   // 处理图片加载
   const handleLoad = () => {
     setIsLoading(false);
-    if (currentSrc === src || !thumbnail) {
-      setHighResLoaded(true);
-      onLoad?.();
-    }
+    setImageLoaded(true);
+    // 当前渲染是否为高清图：预览模式并且已不是缩略图
+    const isHighResNow =
+      previewMode && currentSrc !== (thumbnail || PLACEHOLDER_SRC);
+    setHighResLoaded(isHighResNow);
+    onLoad?.();
   };
 
   // 处理图片错误
   const handleError = () => {
     setHasError(true);
     setIsLoading(false);
+    setImageLoaded(true);
 
     if (currentSrc === src && thumbnail) {
       // 高清图失败，降级到缩略图
@@ -306,8 +309,8 @@ export function QueuedImage({
         unoptimized
       />
 
-      {/* 加载指示器 */}
-      {isLoading && (
+      {/* 加载指示器：严格依赖 <Image> 是否完成 */}
+      {previewMode && !imageLoaded && (
         <div className={styles.loadingOverlay}>
           <div className={styles.loadingSpinner} />
           {showQueueStatus && queuePosition !== null && (

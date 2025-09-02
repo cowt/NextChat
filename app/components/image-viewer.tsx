@@ -1,10 +1,17 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import Image from "next/image";
 import { useMobileScreen } from "../utils";
 import styles from "./image-viewer.module.scss";
 import clsx from "clsx";
 import { useImage } from "../utils/use-image";
 import { imageQueueManager } from "../utils/image-queue-manager";
+import { imageManager } from "../utils/image-manager";
 
 import CloseIcon from "../icons/close.svg";
 import DownloadIcon from "../icons/download.svg";
@@ -60,6 +67,8 @@ export function ImageViewer({
   useQueue = false,
   showQueueStatus = false,
 }: ImageViewerProps) {
+  // 调试标识
+  const instanceIdRef = useRef<string>(Math.random().toString(36).slice(2, 7));
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -74,6 +83,9 @@ export function ImageViewer({
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const lastNavAtRef = useRef<number>(0);
+  const prevIndexRef = useRef<number>(currentIndex);
+  const lastSrcRef = useRef<string | undefined>(undefined);
 
   // 队列加载状态
   const [queueImageDataUrl, setQueueImageDataUrl] = useState<
@@ -100,8 +112,45 @@ export function ImageViewer({
 
     const loadQueueImage = async () => {
       try {
+        // 新图片开始加载时，先清空上一张的 dataUrl，避免复用造成“重复图片”
+        setQueueImageDataUrl(undefined);
         setQueueImageLoading(true);
         setQueueImageError(undefined);
+
+        // 回退：从代理原图获取并转为 dataURL
+        const blobToDataURL = (blob: Blob): Promise<string> =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+
+        const fallbackFetchOriginal = async () => {
+          try {
+            const url = getProxiedImageUrl(currentImage);
+            const resp = await fetch(url, { mode: "cors" });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const ct = resp.headers.get("content-type") || "";
+            if (!ct.startsWith("image/")) {
+              throw new Error(`非图片响应: ${ct}`);
+            }
+            const blob = await resp.blob();
+            const dataUrl = await blobToDataURL(blob);
+            if (!cancelled) {
+              setQueueImageDataUrl(dataUrl);
+              setQueueImageBlob(blob);
+              setQueueImageError(undefined);
+              setQueueImageLoading(false);
+            }
+          } catch (err) {
+            if (!cancelled) {
+              const msg = err instanceof Error ? err.message : String(err);
+              setQueueImageError(msg);
+              setQueueImageLoading(false);
+            }
+          }
+        };
 
         const result = await imageQueueManager.loadImage(currentImage, {
           compress: false,
@@ -110,22 +159,58 @@ export function ImageViewer({
           retryDelay: 1000,
           onLoad: (result) => {
             if (!cancelled) {
-              setQueueImageDataUrl(result.dataUrl);
-              setQueueImageBlob(result.blob);
-              setQueueImageLoading(false);
+              const isImageBlob =
+                !!result.blob && result.blob.type?.startsWith("image/");
+              const isImageDataUrl =
+                typeof result.dataUrl === "string" &&
+                result.dataUrl.startsWith("data:image/");
+              if (isImageBlob || isImageDataUrl) {
+                setQueueImageDataUrl(result.dataUrl);
+                setQueueImageBlob(result.blob);
+                setQueueImageLoading(false);
+              } else {
+                const errMsg =
+                  result.error ||
+                  `非图片响应: ${
+                    result.blob?.type ||
+                    (result.dataUrl
+                      ? result.dataUrl.slice(0, 40) + "..."
+                      : "unknown")
+                  }`;
+                // 触发回退尝试
+                void fallbackFetchOriginal();
+              }
             }
           },
           onError: (error) => {
             if (!cancelled) {
-              setQueueImageError(error);
-              setQueueImageLoading(false);
+              // 触发回退尝试
+              void fallbackFetchOriginal();
             }
           },
         });
 
         if (!cancelled && result.dataUrl) {
-          setQueueImageDataUrl(result.dataUrl);
-          setQueueImageBlob(result.blob);
+          const isImageBlob =
+            !!result.blob && result.blob.type?.startsWith("image/");
+          const isImageDataUrl =
+            typeof result.dataUrl === "string" &&
+            result.dataUrl.startsWith("data:image/");
+          if (isImageBlob || isImageDataUrl) {
+            setQueueImageDataUrl(result.dataUrl);
+            setQueueImageBlob(result.blob);
+          } else {
+            const errMsg =
+              result.error ||
+              `非图片响应: ${
+                result.blob?.type ||
+                (result.dataUrl
+                  ? result.dataUrl.slice(0, 40) + "..."
+                  : "unknown")
+              }`;
+            // 触发回退尝试
+            void fallbackFetchOriginal();
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -145,7 +230,7 @@ export function ImageViewer({
     return () => {
       cancelled = true;
     };
-  }, [visible, useQueue, currentImage]);
+  }, [visible, useQueue, currentImage, currentIndex]);
 
   // 预加载下一张图片
   const nextImage = hasMultipleImages
@@ -203,78 +288,79 @@ export function ImageViewer({
     enabled: visible && !useQueue, // 只在非队列模式且预览时预加载
   });
 
-  // 重置状态当组件变为可见时
+  // 仅在从隐藏到显示时重置状态，避免因 images 引用变化导致索引重置
+  const prevVisibleRef = useRef<boolean>(visible);
   useEffect(() => {
-    if (visible) {
+    if (visible && !prevVisibleRef.current) {
       setCurrentIndex(initialIndex);
       setScale(1);
       setOffset({ x: 0, y: 0 });
     }
-  }, [visible, initialIndex, images]);
+    prevVisibleRef.current = visible;
+  }, [visible, initialIndex]);
 
   // 优化状态同步逻辑：当 currentImage 变化时重置加载状态
   useEffect(() => {
-    setImageLoaded(false);
+    if (!visible) return;
+    // 计算将用于渲染的 src（确保 dataUrl 属于当前 URL，避免沿用上一张）
+    const cacheForCurrent = currentImage
+      ? imageManager.getCacheStatus(currentImage)
+      : undefined;
+    const nextSrc = useQueue
+      ? queueImageDataUrl
+      : cacheForCurrent?.dataUrl ||
+        (currentImage ? getProxiedImageUrl(currentImage) : undefined);
 
-    // 当切换到新图片时，如果需要加载（没有缓存），立即显示加载状态
-    if (currentImage && visible) {
-      // 检查是否有缓存
+    // 仅当实际渲染的 src 发生变化时，才重置 loading
+    if (nextSrc && lastSrcRef.current !== nextSrc) {
+      setImageLoaded(false);
+
+      // 同步检查缓存，避免无意义 loading
+      const cached = currentImage ? cacheForCurrent : undefined;
       const hasCache = useQueue
-        ? queueImageDataUrl && !queueImageError
-        : currentImageDataUrl && !currentImageError;
+        ? !!queueImageDataUrl && !queueImageError
+        : !!cached?.dataUrl;
 
       if (!hasCache) {
         setIsLoading(true);
+      } else {
+        // 已有缓存，直接让 onLoad/fallback 立即收尾
+        setIsLoading(false);
       }
+
+      lastSrcRef.current = nextSrc;
+      prevIndexRef.current = currentIndex;
+    } else if (nextSrc && lastSrcRef.current === nextSrc) {
+      // 当 src 相同但索引变化时，强制重置，避免误判为已加载（例如上一张 dataUrl 被复用）
+      if (prevIndexRef.current !== currentIndex) {
+        setImageLoaded(false);
+        setIsLoading(useQueue ? queueImageLoading : currentImageLoading);
+      } else {
+        // 同一索引重复渲染，认为已完成
+        setIsLoading(false);
+        setImageLoaded(true);
+      }
+      prevIndexRef.current = currentIndex;
     }
   }, [
-    currentImage,
     visible,
+    currentImage,
     useQueue,
     queueImageDataUrl,
     queueImageError,
     currentImageDataUrl,
     currentImageError,
+    currentIndex,
   ]);
 
-  // 额外优化：当 dataUrl 突然出现时（比如从缓存快速加载），立即设置加载完成
-  useEffect(() => {
-    if (currentImageDataUrl && !currentImageLoading && !currentImageError) {
-      // 使用 setTimeout 确保状态更新在下一个事件循环中执行
-      const timer = setTimeout(() => {
-        setImageLoaded(true);
-        setIsLoading(false);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [currentImageDataUrl, currentImageLoading, currentImageError]);
+  // 移除基于 dataUrl 的自动完成，改为严格依赖 <Image> onLoad
 
   // 同步图片加载状态（队列模式或普通模式）
   useEffect(() => {
-    if (useQueue) {
-      // 队列模式：使用队列加载状态
-      setIsLoading(queueImageLoading);
-
-      if (queueImageDataUrl && !queueImageLoading && !queueImageError) {
-        setImageLoaded(true);
-      } else if (queueImageError) {
-        setImageLoaded(false);
-      } else if (queueImageLoading) {
-        // 正在加载时，确保 imageLoaded 为 false
-        setImageLoaded(false);
-      }
-    } else {
-      // 普通模式：使用图片管理器加载状态
-      setIsLoading(currentImageLoading);
-
-      if (currentImageDataUrl && !currentImageLoading && !currentImageError) {
-        setImageLoaded(true);
-      } else if (currentImageError) {
-        setImageLoaded(false);
-      } else if (currentImageLoading) {
-        // 正在加载时，确保 imageLoaded 为 false
-        setImageLoaded(false);
-      }
+    // 使用底层加载状态驱动 isLoading，但不再根据 dataUrl 提前设置 imageLoaded
+    setIsLoading(useQueue ? queueImageLoading : currentImageLoading);
+    if (useQueue ? queueImageError : currentImageError) {
+      setImageLoaded(false);
     }
   }, [
     useQueue,
@@ -290,6 +376,11 @@ export function ImageViewer({
 
   const goToPrevious = useCallback(() => {
     if (!hasMultipleImages) return;
+    const now = Date.now();
+    if (now - lastNavAtRef.current < 200) {
+      return;
+    }
+    lastNavAtRef.current = now;
     setCurrentIndex((prev) => {
       const newIndex = prev === 0 ? images.length - 1 : prev - 1;
       onImageChange?.(newIndex);
@@ -299,6 +390,11 @@ export function ImageViewer({
 
   const goToNext = useCallback(() => {
     if (!hasMultipleImages) return;
+    const now = Date.now();
+    if (now - lastNavAtRef.current < 200) {
+      return;
+    }
+    lastNavAtRef.current = now;
     setCurrentIndex((prev) => {
       const newIndex = prev === images.length - 1 ? 0 : prev + 1;
       onImageChange?.(newIndex);
@@ -383,6 +479,21 @@ export function ImageViewer({
     setIsLoading(false);
     setImageLoaded(false);
   };
+
+  // 兜底：如果浏览器已经从缓存同步完成（complete=true），但未触发 onLoad，主动标记加载完成
+  useEffect(() => {
+    if (!visible) return;
+    const src = useQueue ? queueImageDataUrl : currentImageDataUrl;
+    if (!src) return;
+    const img = imageRef.current;
+    if (img && img.complete) {
+      if (img.naturalWidth > 0) {
+        setIsLoading(false);
+        setImageLoaded(true);
+      } else {
+      }
+    }
+  }, [visible, useQueue, queueImageDataUrl, currentImageDataUrl]);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     // 如果点击的是 overlay 本身，或者点击的不是图片、按钮等交互元素，就关闭预览
@@ -554,16 +665,20 @@ export function ImageViewer({
         </button>
       )}
 
-      {/* 队列模式：只有拿到 dataUrl 才渲染，避免绕过队列直接请求原图 */}
-      {(useQueue
-        ? !!queueImageDataUrl
-        : !!(currentImageDataUrl || currentImage)) && (
+      {/* 渲染图片：
+          - 队列模式：仅在有 dataUrl 时渲染
+          - 非队列模式：有 dataUrl 用 dataUrl，否则回退到代理后的原始 URL，确保能触发 onLoad */}
+      {(useQueue ? !!queueImageDataUrl : !!currentImage) && (
         <Image
+          // key 带上索引，确保同一 URL 不同索引时也会触发重新渲染
+          key={`${currentImage}-${currentIndex}`}
           ref={imageRef}
           src={
             useQueue
               ? (queueImageDataUrl as string)
-              : currentImageDataUrl || currentImage
+              : ((currentImage &&
+                  imageManager.getCacheStatus(currentImage)
+                    ?.dataUrl) as string) || getProxiedImageUrl(currentImage)
           }
           alt={`图片 ${currentIndex + 1}`}
           className={clsx(styles["main-image"], {
@@ -582,16 +697,15 @@ export function ImageViewer({
         />
       )}
 
-      {/* 加载指示器只在没有 dataUrl 且正在加载时显示 */}
-      {!(useQueue ? queueImageDataUrl : currentImageDataUrl) &&
-        (useQueue ? queueImageLoading : isLoading) && (
-          <div className={styles["loading-placeholder"]}>
-            <div className={styles["loading-spinner"]} />
-            {showQueueStatus && useQueue && (
-              <div className={styles["queue-status"]}>队列加载中...</div>
-            )}
-          </div>
-        )}
+      {/* 加载指示器：严格以 <Image> 是否完成为准，避免提前结束 */}
+      {!imageLoaded && !(useQueue ? queueImageError : currentImageError) && (
+        <div className={styles["loading-placeholder"]}>
+          <div className={styles["loading-spinner"]} />
+          {showQueueStatus && useQueue && (
+            <div className={styles["queue-status"]}>队列加载中...</div>
+          )}
+        </div>
+      )}
 
       {/* 错误提示只在没有 dataUrl 且有错误时显示 */}
       {!(useQueue ? queueImageDataUrl : currentImageDataUrl) &&

@@ -209,11 +209,21 @@
 
 .markdown-body img {
   border-style: none;
+  /* 在桌面端保留较小默认宽度，移动端会覆盖为100% */
   width: 30%;
   height: auto;
   max-width: 100%;
   box-sizing: content-box;
   background-color: var(--color-canvas-default);
+}
+
+@media only screen and (max-width: 600px) {
+  .markdown-body img {
+    /* 移动端图片占满容器宽度，保持等比缩放 */
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+  }
 }
 
 .markdown-body code,
