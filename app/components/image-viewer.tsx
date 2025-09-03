@@ -69,6 +69,10 @@ export function ImageViewer({
 }: ImageViewerProps) {
   // 调试标识
   const instanceIdRef = useRef<string>(Math.random().toString(36).slice(2, 7));
+  const settleLoaded = (loaded: boolean) => {
+    setIsLoading(false);
+    setImageLoaded(loaded);
+  };
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -116,6 +120,9 @@ export function ImageViewer({
         setQueueImageDataUrl(undefined);
         setQueueImageLoading(true);
         setQueueImageError(undefined);
+        // 翻页立即重置视图加载状态，确保出现加载动画
+        setImageLoaded(false);
+        setIsLoading(true);
 
         // 回退：从代理原图获取并转为 dataURL
         const blobToDataURL = (blob: Blob): Promise<string> =>
@@ -353,24 +360,13 @@ export function ImageViewer({
     currentIndex,
   ]);
 
-  // 移除基于 dataUrl 的自动完成，改为严格依赖 <Image> onLoad
-
-  // 同步图片加载状态（队列模式或普通模式）
+  // 错误出现时立即收尾
   useEffect(() => {
-    // 使用底层加载状态驱动 isLoading，但不再根据 dataUrl 提前设置 imageLoaded
-    setIsLoading(useQueue ? queueImageLoading : currentImageLoading);
-    if (useQueue ? queueImageError : currentImageError) {
-      setImageLoaded(false);
+    const hasError = useQueue ? queueImageError : currentImageError;
+    if (hasError) {
+      settleLoaded(false);
     }
-  }, [
-    useQueue,
-    queueImageLoading,
-    queueImageDataUrl,
-    queueImageError,
-    currentImageLoading,
-    currentImageError,
-    currentImageDataUrl,
-  ]);
+  }, [useQueue, queueImageError, currentImageError]);
 
   // 移除快速加载备用方案，避免与主要加载机制冲突
 
@@ -383,6 +379,7 @@ export function ImageViewer({
     lastNavAtRef.current = now;
     setCurrentIndex((prev) => {
       const newIndex = prev === 0 ? images.length - 1 : prev - 1;
+
       onImageChange?.(newIndex);
       return newIndex;
     });
@@ -397,6 +394,7 @@ export function ImageViewer({
     lastNavAtRef.current = now;
     setCurrentIndex((prev) => {
       const newIndex = prev === images.length - 1 ? 0 : prev + 1;
+
       onImageChange?.(newIndex);
       return newIndex;
     });
@@ -471,29 +469,37 @@ export function ImageViewer({
   ]);
 
   const handleImageLoad = () => {
-    setIsLoading(false);
-    setImageLoaded(true);
+    settleLoaded(true);
   };
 
   const handleImageError = () => {
-    setIsLoading(false);
-    setImageLoaded(false);
+    settleLoaded(false);
   };
 
   // 兜底：如果浏览器已经从缓存同步完成（complete=true），但未触发 onLoad，主动标记加载完成
   useEffect(() => {
     if (!visible) return;
-    const src = useQueue ? queueImageDataUrl : currentImageDataUrl;
-    if (!src) return;
     const img = imageRef.current;
-    if (img && img.complete) {
-      if (img.naturalWidth > 0) {
-        setIsLoading(false);
-        setImageLoaded(true);
-      } else {
+    // 仅当 key 对应的 src 与当前期望一致时，才用 complete 快速收尾
+    const expectedSrc = useQueue
+      ? queueImageDataUrl
+      : (currentImage && imageManager.getCacheStatus(currentImage)?.dataUrl) ||
+        (currentImage ? getProxiedImageUrl(currentImage) : undefined);
+    if (img && expectedSrc && img.getAttribute("src") === expectedSrc) {
+      if (img.complete && img.naturalWidth > 0) {
+        settleLoaded(true);
       }
     }
-  }, [visible, useQueue, queueImageDataUrl, currentImageDataUrl]);
+  }, [
+    visible,
+    useQueue,
+    queueImageDataUrl,
+    currentImageDataUrl,
+    currentImage,
+    currentIndex,
+  ]);
+
+  // 卸载清理：当前无计时器，无需处理
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     // 如果点击的是 overlay 本身，或者点击的不是图片、按钮等交互元素，就关闭预览
@@ -697,8 +703,8 @@ export function ImageViewer({
         />
       )}
 
-      {/* 加载指示器：严格以 <Image> 是否完成为准，避免提前结束 */}
-      {!imageLoaded && !(useQueue ? queueImageError : currentImageError) && (
+      {/* 加载指示器：以实际 isLoading 为准 */}
+      {isLoading && !(useQueue ? queueImageError : currentImageError) && (
         <div className={styles["loading-placeholder"]}>
           <div className={styles["loading-spinner"]} />
           {showQueueStatus && useQueue && (
