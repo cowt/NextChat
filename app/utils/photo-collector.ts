@@ -468,9 +468,14 @@ class PhotoCollector {
   async loadMore(): Promise<PhotoInfo[]> {
     this.currentPage += 1;
 
+    const offset =
+      this.currentPage === 1
+        ? this.FIRST_PAGE_SIZE
+        : this.FIRST_PAGE_SIZE + (this.currentPage - 1) * this.PAGE_SIZE;
+
     const photos = await photoStorage.getPhotos({
       limit: this.PAGE_SIZE,
-      offset: this.currentPage * this.PAGE_SIZE,
+      offset,
       sortBy: "timestamp",
       sortOrder: "desc",
     });

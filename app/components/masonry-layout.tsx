@@ -26,6 +26,8 @@ interface MasonryLayoutProps {
   className?: string;
   useQueue?: boolean; // 是否使用队列图片组件
   showQueueStatus?: boolean; // 是否显示队列状态
+  // 当列表放在自定义滚动容器中时，需要把该容器作为 IntersectionObserver 的 root
+  scrollRoot?: HTMLElement | null;
 }
 
 interface PhotoItem extends PhotoInfo {
@@ -45,6 +47,7 @@ export function MasonryLayout({
   className,
   useQueue = false,
   showQueueStatus = false,
+  scrollRoot = null,
 }: MasonryLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
@@ -84,6 +87,7 @@ export function MasonryLayout({
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setContainerWidth(entry.contentRect.width);
+        // 调试日志移除
       }
     });
 
@@ -146,11 +150,16 @@ export function MasonryLayout({
   useEffect(() => {
     const layouted = calculateLayout(photos);
     setLayoutedPhotos(layouted);
+    // 调试日志移除
   }, [photos, calculateLayout]);
 
   // 设置无限滚动观察者
   useEffect(() => {
     if (!loadMoreRef.current || !onLoadMore || !hasMore) return;
+
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
@@ -159,19 +168,23 @@ export function MasonryLayout({
         }
       },
       {
+        root: scrollRoot || null,
         threshold: 0.1,
         rootMargin: "200px 0px", // 提前200px触发，提高响应速度
       },
     );
 
     observerRef.current.observe(loadMoreRef.current);
+    // 调试日志移除
 
     return () => {
       if (observerRef.current) {
         observerRef.current.disconnect();
+        observerRef.current = null;
+        // 调试日志移除
       }
     };
-  }, [onLoadMore, hasMore, loading]);
+  }, [onLoadMore, hasMore, loading, scrollRoot]);
 
   const handleImageClick = useCallback(
     (photo: PhotoItem) => {

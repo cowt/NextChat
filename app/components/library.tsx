@@ -111,7 +111,8 @@ export function Library() {
 
       // 如果返回的数量少于限制，说明没有更多了
       const limit = reset ? 12 : 20;
-      setHasMore(newPhotos.length > 0 && newPhotos.length >= limit);
+      const more = newPhotos.length > 0 && newPhotos.length >= limit;
+      setHasMore(more);
     } catch (error) {
       console.error("[Library] 加载照片失败:", error);
 
@@ -536,6 +537,7 @@ export function Library() {
               columns={8}
               gap={6}
               useQueue={useQueue}
+              scrollRoot={scrollContainerRef.current}
             />
             {/* 移除重复的 loading 提示，MasonryLayout 内部已经有 loading 指示器 */}
           </>
