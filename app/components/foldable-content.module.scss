@@ -46,7 +46,7 @@
   font-size: 11px; // 缩小预览字体
   line-height: 1.18;
   max-height: calc(1.18em * 3 + 2px);
-  max-width: 40ch;
+  max-width: 100%; // 使用可用空间，减少右侧留白
 }
 
 .previous {
@@ -56,7 +56,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: min(36ch, 100%);
+  max-width: min(60ch, 100%);
   min-height: 1.2em; 
 }
 
@@ -70,7 +70,7 @@
   white-space: nowrap; // 单行展示
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: min(36ch, 100%); // 自动限制过长
+  max-width: min(60ch, 100%); // 自动限制过长
 }
 
 // 幽灵文本 / 残影效果（仅在 isTyping 为 true 时添加 .ghost）
@@ -96,8 +96,6 @@
   mask-size: 100% 100%;
 }
 
-// 移除光标，改为文字型打字机效果
-
 // 右侧渐隐遮罩，营造“若隐若现”的收敛感
 .preview::after {
   content: "";
@@ -105,7 +103,7 @@
   right: 0;
   top: 0;
   bottom: 0;
-  width: 64px;
+  width: 1px; // 缩小右侧渐隐宽度，显示更多文字
   pointer-events: none;
   background: linear-gradient(to left, var(--color-canvas-default), transparent);
   opacity: 0.7;

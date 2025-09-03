@@ -111,7 +111,7 @@ export async function preProcessImageContentForAlibabaDashScope(
 }
 
 // 为了保持兼容性，重新导出 cacheImageToBase64Image
-import { cacheImageToBase64Image } from './image-manager';
+import { cacheImageToBase64Image } from "./image-manager";
 export { cacheImageToBase64Image };
 
 export function base64Image2Blob(base64Data: string, contentType: string) {
@@ -124,7 +124,18 @@ export function base64Image2Blob(base64Data: string, contentType: string) {
   return new Blob([byteArray], { type: contentType });
 }
 
-export function uploadImage(file: Blob): Promise<string> {
+export interface UploadImageContext {
+  sessionId?: string;
+  sessionTitle?: string;
+  messageId?: string;
+  isUser?: boolean;
+  timestamp?: number;
+}
+
+export function uploadImage(
+  file: Blob,
+  context?: UploadImageContext,
+): Promise<string> {
   if (!window._SW_ENABLED) {
     // if serviceWorker register error, using compressImage
     return compressImage(file, 256 * 1024);
@@ -141,7 +152,37 @@ export function uploadImage(file: Blob): Promise<string> {
     .then((res) => {
       // console.log("res", res);
       if (res?.code == 0 && res?.data) {
-        return res?.data;
+        const fileUrl: string = res?.data;
+        try {
+          // 仅在是图片并且是本地缓存URL时，记录到 IndexedDB
+          if (
+            typeof file?.type === "string" &&
+            file.type.startsWith("image/") &&
+            typeof fileUrl === "string" &&
+            fileUrl.includes("/api/cache/")
+          ) {
+            // 动态导入以避免打包时的循环依赖风险
+            import("./photo-storage").then(({ photoStorage }) => {
+              const now = Date.now();
+              const meta = {
+                url: fileUrl,
+                sessionId: context?.sessionId || "uploads",
+                sessionTitle: context?.sessionTitle || "本地上传",
+                messageId:
+                  context?.messageId ||
+                  `upload-${now}-${Math.random().toString(36).slice(2, 8)}`,
+                timestamp: context?.timestamp || now,
+                isUser: context?.isUser ?? true,
+              } as const;
+
+              photoStorage
+                .addPhoto(meta)
+                .catch((e) => console.warn("[uploadImage] addPhoto failed", e));
+            });
+          }
+        } catch (_) {}
+
+        return fileUrl;
       }
       throw Error(`upload Error: ${res?.msg}`);
     });
