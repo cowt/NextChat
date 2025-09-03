@@ -138,10 +138,9 @@ const MarkdownImage = React.memo(
         };
       }
 
-      // 默认占位样式，避免布局跳动
+      // 默认占位样式：去除最小高度以避免在缩小视窗时拉伸变形
       return {
         ...baseStyle,
-        minHeight: "200px", // 默认最小高度占位
         maxWidth: "100%",
         height: "auto",
       };

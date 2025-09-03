@@ -499,7 +499,7 @@
 
 .chat-message-item-image {
   /* 默认保持等比缩放，避免挤压变形 */
-  width: auto;
+  width: 30%;
   height: auto;
   max-width: 100%;
   margin-top: 10px;
@@ -537,8 +537,8 @@
   }
 
   .chat-message-item-image {
-    /* 单图在移动端占满可用宽度，保持等比高度 */
-    width: 100%;
+    /* 移动端宽度自适应，保持等比高度 */
+    width: auto;
     height: auto;
     max-width: 100%;
   }
