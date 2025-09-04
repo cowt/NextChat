@@ -229,6 +229,7 @@ export function SideBarTail(props: {
 export function SideBar(props: { className?: string }) {
   useHotKey();
   const { onDragStart, shouldNarrow } = useDragSideBar();
+  const isMobileScreen = useMobileScreen();
   const [showDiscoverySelector, setshowDiscoverySelector] = useState(false);
   const navigate = useNavigate();
   const config = useAppConfig();
@@ -261,7 +262,6 @@ export function SideBar(props: { className?: string }) {
       if (announcement?.id) {
         localStorage.setItem("announcement:dismissed:id", announcement.id);
         setDismissed(announcement.id);
-        accessStore.clearAnnouncement?.(announcement.id);
       }
     } catch (e) {
       // ignore
@@ -444,32 +444,34 @@ export function SideBar(props: { className?: string }) {
                 />
               </a>
             </div>
-            {announcement && (
-              <div className={styles["sidebar-action"]}>
-                <IconButton
-                  icon={<FireIcon />}
-                  text={undefined}
-                  onClick={() => {
-                    if (announcement.url) {
-                      window.open(
-                        announcement.url,
-                        "_blank",
-                        "noopener,noreferrer",
-                      );
-                    } else if (announcement.content) {
-                      showToast(announcement.content);
-                    }
-                  }}
-                  shadow
-                />
-              </div>
-            )}
+            <div className={styles["sidebar-action"]}>
+              <IconButton
+                icon={<FireIcon />}
+                text={undefined}
+                onClick={() => {
+                  if (announcement?.url) {
+                    window.open(
+                      announcement.url,
+                      "_blank",
+                      "noopener,noreferrer",
+                    );
+                  } else if (announcement?.content) {
+                    showToast(announcement.content);
+                  } else {
+                    showToast("暂无公告");
+                  }
+                }}
+                shadow
+              />
+            </div>
           </>
         }
         secondaryAction={
           <IconButton
             icon={<AddIcon />}
-            text={shouldNarrow ? undefined : Locale.Home.NewChat}
+            text={
+              shouldNarrow || isMobileScreen ? undefined : Locale.Home.NewChat
+            }
             onClick={() => {
               if (config.dontShowMaskSplashScreen) {
                 chatStore.newSession();

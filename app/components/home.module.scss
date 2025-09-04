@@ -131,6 +131,17 @@
   .mobile {
     display: block;
   }
+
+  // Keep bottom actions in a single row on mobile
+  .sidebar-tail {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar-actions {
+    flex-wrap: nowrap;
+  }
 }
 
 .sidebar-header {
@@ -514,4 +525,18 @@
 
 .rtl-screen {
   direction: rtl;
+}
+
+// Override order: ensure mobile single-line actions after base styles
+@media only screen and (max-width: 600px) {
+  .sidebar-tail {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar-actions {
+    flex-wrap: nowrap;
+    flex-shrink: 0; // avoid shrinking so we can scroll horizontally
+  }
 }
