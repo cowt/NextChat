@@ -50,6 +50,8 @@ export const DEFAULT_CONFIG = {
   sendPreviewBubble: true,
   showBusyOverlay: true,
   showProgressTail: true,
+  // 聊天输入可附加的图片数量上限
+  attachImageMaxCount: 5,
   enableAutoGenerateTitle: true,
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
 

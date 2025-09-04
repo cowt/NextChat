@@ -98,6 +98,7 @@ export function ImageViewer({
   const [queueImageLoading, setQueueImageLoading] = useState(false);
   const [queueImageError, setQueueImageError] = useState<string | undefined>();
   const [queueImageBlob, setQueueImageBlob] = useState<Blob | undefined>();
+  const currentObjectUrlRef = useRef<string | null>(null);
 
   const currentImage = images[currentIndex];
   const hasMultipleImages = images.length > 1;
@@ -313,10 +314,11 @@ export function ImageViewer({
     const cacheForCurrent = currentImage
       ? imageManager.getCacheStatus(currentImage)
       : undefined;
+    // 移除对代理原图的直接回退，避免 <img> 再次向服务器发起请求
+    // 非队列模式仅在有缓存或 hook 返回的 dataUrl 时才渲染
     const nextSrc = useQueue
       ? queueImageDataUrl
-      : cacheForCurrent?.dataUrl ||
-        (currentImage ? getProxiedImageUrl(currentImage) : undefined);
+      : cacheForCurrent?.dataUrl || currentImageDataUrl;
 
     // 仅当实际渲染的 src 发生变化时，才重置 loading
     if (nextSrc && lastSrcRef.current !== nextSrc) {
@@ -326,7 +328,7 @@ export function ImageViewer({
       const cached = currentImage ? cacheForCurrent : undefined;
       const hasCache = useQueue
         ? !!queueImageDataUrl && !queueImageError
-        : !!cached?.dataUrl;
+        : !!cached?.dataUrl || !!currentImageDataUrl;
 
       if (!hasCache) {
         setIsLoading(true);
@@ -347,6 +349,11 @@ export function ImageViewer({
         setIsLoading(false);
         setImageLoaded(true);
       }
+      prevIndexRef.current = currentIndex;
+    } else if (!nextSrc && prevIndexRef.current !== currentIndex) {
+      // 索引变化但 dataUrl 尚未就绪，进入加载中，等待 hook/队列返回
+      setImageLoaded(false);
+      setIsLoading(true);
       prevIndexRef.current = currentIndex;
     }
   }, [
@@ -430,6 +437,40 @@ export function ImageViewer({
     }
   }, [currentImage, currentIndex, currentImageBlob, queueImageBlob, useQueue]);
 
+  // 生成用于渲染的 src（优先 Blob → 退到 dataUrl），并管理 URL 释放
+  const renderSrc = useMemo(() => {
+    // 清理旧的 objectURL
+    if (currentObjectUrlRef.current) {
+      URL.revokeObjectURL(currentObjectUrlRef.current);
+      currentObjectUrlRef.current = null;
+    }
+
+    const blob = useQueue ? queueImageBlob : currentImageBlob;
+    const dataUrl = useQueue ? queueImageDataUrl : currentImageDataUrl;
+    if (blob && blob.type?.startsWith("image/")) {
+      const url = URL.createObjectURL(blob);
+      currentObjectUrlRef.current = url;
+      return url;
+    }
+    return dataUrl;
+  }, [
+    useQueue,
+    queueImageBlob,
+    currentImageBlob,
+    queueImageDataUrl,
+    currentImageDataUrl,
+  ]);
+
+  // 卸载时释放 URL
+  useEffect(() => {
+    return () => {
+      if (currentObjectUrlRef.current) {
+        URL.revokeObjectURL(currentObjectUrlRef.current);
+        currentObjectUrlRef.current = null;
+      }
+    };
+  }, []);
+
   // 键盘导航
   useEffect(() => {
     if (!visible) return;
@@ -483,8 +524,9 @@ export function ImageViewer({
     // 仅当 key 对应的 src 与当前期望一致时，才用 complete 快速收尾
     const expectedSrc = useQueue
       ? queueImageDataUrl
-      : (currentImage && imageManager.getCacheStatus(currentImage)?.dataUrl) ||
-        (currentImage ? getProxiedImageUrl(currentImage) : undefined);
+      : currentImageDataUrl ||
+        (currentImage && imageManager.getCacheStatus(currentImage)?.dataUrl) ||
+        undefined;
     if (img && expectedSrc && img.getAttribute("src") === expectedSrc) {
       if (img.complete && img.naturalWidth > 0) {
         settleLoaded(true);
@@ -671,37 +713,44 @@ export function ImageViewer({
         </button>
       )}
 
-      {/* 渲染图片：
-          - 队列模式：仅在有 dataUrl 时渲染
-          - 非队列模式：有 dataUrl 用 dataUrl，否则回退到代理后的原始 URL，确保能触发 onLoad */}
-      {(useQueue ? !!queueImageDataUrl : !!currentImage) && (
-        <Image
-          // key 带上索引，确保同一 URL 不同索引时也会触发重新渲染
-          key={`${currentImage}-${currentIndex}`}
-          ref={imageRef}
-          src={
-            useQueue
-              ? (queueImageDataUrl as string)
-              : ((currentImage &&
-                  imageManager.getCacheStatus(currentImage)
-                    ?.dataUrl) as string) || getProxiedImageUrl(currentImage)
-          }
-          alt={`图片 ${currentIndex + 1}`}
-          className={clsx(styles["main-image"], {
-            [styles["image-loaded"]]: imageLoaded,
-          })}
-          style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-            cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
-          }}
-          onLoad={handleImageLoad}
-          onError={handleImageError}
-          onDragStart={(e) => e.preventDefault()}
-          width={1920}
-          height={1080}
-          unoptimized
-        />
-      )}
+      {/* 渲染图片：仅在拿到 dataUrl/缓存后再渲染，避免直接命中代理导致重复请求 */}
+      {(useQueue
+        ? !!(queueImageBlob || queueImageDataUrl)
+        : !!(
+            currentImageBlob ||
+            currentImageDataUrl ||
+            (currentImage && imageManager.getCacheStatus(currentImage)?.dataUrl)
+          )) &&
+        !(
+          (useQueue ? queueImageError : currentImageError) &&
+          !(useQueue
+            ? queueImageBlob || queueImageDataUrl
+            : currentImageBlob || currentImageDataUrl)
+        ) && (
+          <Image
+            // key 带上索引，确保同一 URL 不同索引时也会触发重新渲染
+            key={`${currentImage}-${currentIndex}`}
+            ref={imageRef}
+            src={renderSrc as string}
+            alt={`图片 ${currentIndex + 1}`}
+            className={clsx(styles["main-image"], {
+              [styles["image-loaded"]]: imageLoaded,
+            })}
+            style={{
+              transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+              cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
+            }}
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+            onDragStart={(e) => e.preventDefault()}
+            sizes="(max-width: 768px) 100vw, 90vw"
+            priority={currentIndex === initialIndex}
+            loading="eager"
+            width={1920}
+            height={1080}
+            unoptimized
+          />
+        )}
 
       {/* 加载指示器：以实际 isLoading 为准 */}
       {isLoading && !(useQueue ? queueImageError : currentImageError) && (
@@ -713,8 +762,10 @@ export function ImageViewer({
         </div>
       )}
 
-      {/* 错误提示只在没有 dataUrl 且有错误时显示 */}
-      {!(useQueue ? queueImageDataUrl : currentImageDataUrl) &&
+      {/* 错误提示：仅当未加载完成、当前不在加载中、且存在错误并且无可用 dataUrl 时显示 */}
+      {!imageLoaded &&
+        !isLoading &&
+        !(useQueue ? queueImageDataUrl : currentImageDataUrl) &&
         (useQueue ? queueImageError : currentImageError) && (
           <div className={styles["error-placeholder"]}>
             <div className={styles["error-message"]}>图片加载失败</div>
