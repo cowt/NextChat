@@ -1,11 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" shape-rendering="geometricPrecision">
   <defs>
-    <marker id="arrow" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L4,2 L0,4 Z" fill="currentColor" />
+    <!-- 固定箭头尺寸，避免随线宽缩放导致发虚 -->
+    <marker id="arrow" markerWidth="3.2" markerHeight="3.2" refX="2.4" refY="1.6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L3.2,1.6 L0,3.2 Z" fill="currentColor"/>
     </marker>
   </defs>
-  <!-- 上半圈 → 右下箭头 -->
-  <path d="M9.6 2.8A5.5 5.5 0 0 1 13.2 7.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
-  <!-- 下半圈 → 左上箭头 -->
-  <path d="M6.4 13.2A5.5 5.5 0 0 1 2.8 8.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" marker-end="url(#arrow)"/>
+  <!-- 通过减少半径并加长弧长，让箭头尾部更长 -->
+  <!-- 上半圈 → 指向右下，尾部更长 -->
+  <path d="M7.5 1.5A7 7 0 0 1 14.5 8.5"
+        stroke="currentColor" stroke-width="1"
+        stroke-linecap="round" stroke-linejoin="round"
+        fill="none" marker-end="url(#arrow)"/>
+  <!-- 下半圈 → 指向左上，尾部更长 -->
+  <path d="M8.5 14.5A7 7 0 0 1 1.5 7.5"
+        stroke="currentColor" stroke-width="1"
+        stroke-linecap="round" stroke-linejoin="round"
+        fill="none" marker-end="url(#arrow)"/>
 </svg>

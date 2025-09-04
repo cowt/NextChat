@@ -193,8 +193,14 @@ class ImageManager {
         const isBlobUrl = url.startsWith("blob:");
         const isFileUrl = url.startsWith("file:");
 
-        // 如果是本地图片（base64、blob、file、缓存URL），直接处理，不走网络请求
-        if (isDataUrl || isBlobUrl || isFileUrl || isCacheUrl || isLocalUrl) {
+        // 如果是本地图片（base64、blob、file，或同源非缓存URL），直接处理，不走网络请求
+        // 注意：/api/cache/* 需要优先通过 CacheStorage 命中，不能走这里
+        if (
+          isDataUrl ||
+          isBlobUrl ||
+          isFileUrl ||
+          (isLocalUrl && !isCacheUrl)
+        ) {
           try {
             const response = await fetch(url);
             const blob = await response.blob();

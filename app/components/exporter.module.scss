@@ -130,10 +130,26 @@
 
       .logo {
         position: absolute;
-        top: 0px;
-        left: 0px;
-        height: 50%;
-        transform: scale(1.5);
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.08;
+        filter: grayscale(100%);
+        pointer-events: none;
+        z-index: 0;
+
+        img {
+          width: 60%;
+          height: auto;
+          transform: rotate(-15deg);
+          max-width: none;
+        }
+      }
+
+      > div:not(.logo) {
+        position: relative;
+        z-index: 1;
       }
 
       .main-title {
@@ -267,5 +283,5 @@
     }
   }
 
-  .default-theme {}
+  // .default-theme placeholder removed
 }

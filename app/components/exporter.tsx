@@ -22,7 +22,7 @@ import {
 
 import CopyIcon from "../icons/copy.svg";
 import LoadingIcon from "../icons/three-dots.svg";
-import ChatGptIcon from "../icons/chatgpt.png";
+import ChatGptIcon from "../icons/logo2.png";
 import ShareIcon from "../icons/share.svg";
 
 import DownloadIcon from "../icons/download.svg";
@@ -381,13 +381,13 @@ export function PreviewActions(props: {
           icon={<DownloadIcon />}
           onClick={props.download}
         ></IconButton>
-        <IconButton
+        {/* <IconButton
           text={Locale.Export.Share}
           bordered
           shadow
           icon={loading ? <LoadingIcon /> : <ShareIcon />}
           onClick={share}
-        ></IconButton>
+        ></IconButton> */}
       </div>
       <div
         style={{
@@ -551,8 +551,8 @@ export function ImagePreviewer(props: {
             <NextImage
               src={ChatGptIcon.src}
               alt="logo"
-              width={50}
-              height={50}
+              width={400}
+              height={400}
             />
           </div>
 
