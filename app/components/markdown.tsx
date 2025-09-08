@@ -29,7 +29,7 @@ import FoldableContent from "./foldable-content";
 import { MediaOptionSelector } from "./media-option-selector";
 import { OptimizedImage } from "./optimized-image";
 
-// Memoized image component with CLS prevention - 只做预加载，不替换src
+// Memoized image component with CLS prevention，统一为外链图片走本地代理并带回退
 const MarkdownImage = React.memo(
   (imgProps: any) => {
     const [imageDimensions, setImageDimensions] = React.useState<{
@@ -38,6 +38,36 @@ const MarkdownImage = React.memo(
       aspectRatio?: string;
     }>({});
     const isAliveRef = React.useRef(true);
+    // 当前用于展示的图片 src，默认基于原始 src 计算（外链→代理）
+    const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(
+      undefined,
+    );
+
+    // 计算是否需要代理
+    const computeDisplaySrc = React.useCallback((src?: string) => {
+      if (!src) return { display: src, original: src, proxied: src };
+      const isLocal =
+        src.startsWith("data:") ||
+        src.startsWith("blob:") ||
+        src.startsWith("file:");
+      if (isLocal) {
+        return { display: src, original: src, proxied: src };
+      }
+      // 已经是站内或相对路径，直接使用；否则统一通过代理
+      const isAbsolute = /^(https?:)?\/\//i.test(src);
+      const isAlreadyProxied = src.startsWith("/api/images/proxy?");
+      if (!isAbsolute || isAlreadyProxied) {
+        return { display: src, original: src, proxied: src };
+      }
+      const proxied = `/api/images/proxy?url=${encodeURIComponent(src)}`;
+      return { display: proxied, original: src, proxied };
+    }, []);
+
+    // 同步 props.src 变更到 currentSrc（优先使用代理）
+    React.useEffect(() => {
+      const { display } = computeDisplaySrc(imgProps.src);
+      setCurrentSrc(display);
+    }, [imgProps.src, computeDisplaySrc]);
 
     React.useEffect(() => {
       return () => {
@@ -74,6 +104,52 @@ const MarkdownImage = React.memo(
               // 本地图片尺寸获取失败，静默处理
             };
             img.src = originalSrc;
+
+            // 将本地图片（blob:/data:）固化到 ServiceWorker 文件缓存，得到稳定可复用的站内URL
+            try {
+              // 仅处理 blob:/data:，file: 无法在浏览器中抓取
+              if (
+                (originalSrc.startsWith("blob:") ||
+                  originalSrc.startsWith("data:")) &&
+                isAliveRef.current
+              ) {
+                // 确认 ServiceWorker 已接管页面；否则跳过（避免请求落到服务端 /api/cache/upload）
+                try {
+                  if (
+                    typeof navigator === "undefined" ||
+                    !navigator.serviceWorker ||
+                    !navigator.serviceWorker.controller
+                  ) {
+                    throw new Error("sw not controlling");
+                  }
+                } catch (_) {
+                  // SW 未接管，跳过固化
+                  return;
+                }
+                const resp = await fetch(originalSrc);
+                if (resp.ok) {
+                  const blob = await resp.blob();
+                  const extFromType =
+                    (blob.type || "").split("/").pop() || "bin";
+                  const file = new File([blob], `image.${extFromType}`, {
+                    type: blob.type || "application/octet-stream",
+                  });
+                  const form = new FormData();
+                  form.append("file", file);
+                  const uploadResp = await fetch("/api/cache/upload", {
+                    method: "POST",
+                    body: form,
+                  });
+                  if (uploadResp.ok && isAliveRef.current) {
+                    const json = await uploadResp.json().catch(() => null);
+                    const stableUrl = json?.data;
+                    if (stableUrl) {
+                      setCurrentSrc(stableUrl);
+                    }
+                  }
+                }
+              }
+            } catch (_) {}
           } else {
             // 远程图片通过imageManager预加载
             const { imageManager } = await import("../utils/image-manager");
@@ -90,6 +166,48 @@ const MarkdownImage = React.memo(
                 aspectRatio: `${result.width} / ${result.height}`,
               });
             }
+
+            // 将外链图片固化到 ServiceWorker 文件缓存，获得稳定可复用的站内URL
+            // 仅在成功拿到 blob 且当前展示源不是缓存地址时尝试
+            try {
+              const displayNow = computeDisplaySrc(originalSrc).display || "";
+              const isCacheUrl =
+                typeof displayNow === "string" &&
+                displayNow.startsWith("/api/cache");
+              if (!isCacheUrl && result.blob && isAliveRef.current) {
+                // 确认 ServiceWorker 已接管页面；否则跳过固化
+                try {
+                  if (
+                    typeof navigator === "undefined" ||
+                    !navigator.serviceWorker ||
+                    !navigator.serviceWorker.controller
+                  ) {
+                    throw new Error("sw not controlling");
+                  }
+                } catch (_) {
+                  // SW 未接管，跳过固化
+                  return;
+                }
+                const extFromType =
+                  (result.blob.type || "").split("/").pop() || "bin";
+                const file = new File([result.blob], `image.${extFromType}`, {
+                  type: result.blob.type || "application/octet-stream",
+                });
+                const form = new FormData();
+                form.append("file", file);
+                const resp = await fetch("/api/cache/upload", {
+                  method: "POST",
+                  body: form,
+                });
+                if (resp.ok) {
+                  const json = await resp.json().catch(() => null);
+                  const stableUrl = json?.data;
+                  if (stableUrl && isAliveRef.current) {
+                    setCurrentSrc(stableUrl);
+                  }
+                }
+              }
+            } catch (_) {}
           }
         } catch (error) {
           // 预加载失败不影响显示，静默处理
@@ -146,10 +264,10 @@ const MarkdownImage = React.memo(
       };
     }, [imageDimensions, imgProps.style, imgProps.src]);
 
-    // 始终使用原始src，避免二次渲染
+    // 统一使用 currentSrc 渲染；加载失败时尝试在原始与代理之间回退
     return (
       <img
-        src={imgProps.src}
+        src={currentSrc}
         alt={imgProps.alt || ""}
         title={imgProps.title}
         className={imgProps.className}
@@ -157,6 +275,18 @@ const MarkdownImage = React.memo(
         loading={imgProps.src?.startsWith("data:") ? "eager" : "lazy"} // 本地图片立即加载
         decoding="async"
         referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        onError={() => {
+          try {
+            const { original, proxied } = computeDisplaySrc(imgProps.src);
+            // 若当前为代理，回退原始；若当前为原始，切换代理
+            if (currentSrc === proxied && original) {
+              setCurrentSrc(original);
+            } else if (currentSrc === original && proxied) {
+              setCurrentSrc(proxied);
+            }
+          } catch (_) {}
+        }}
       />
     );
   },
