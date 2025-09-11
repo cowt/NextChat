@@ -9,19 +9,33 @@
 
 .popover {
   position: relative;
-  z-index: 2;
+  z-index: 30; // 低于 busy overlay(50)，保持遮挡一致
+  display: inline-flex; // 与其他 ChatAction 同级排布
+  align-items: center;
 }
 
 .popover-content {
   position: absolute;
-  width: 350px;
+  width: auto;
+  min-width: 320px;
+  max-width: 520px;
   animation: slide-in 0.3s ease;
-  right: 0;
-  top: calc(100% + 10px);
+  left: 0;
+  bottom: calc(100% + 10px);
+  background: var(--white);
+  border: var(--border-in-light);
+  border-radius: 10px;
+  box-shadow: var(--card-shadow);
+  padding: 10px;
+  z-index: 40; // 低于 busy overlay(50)
 }
+
 @media screen and (max-width: 600px) {
   .popover-content {
-    width: auto;
+    width: calc(100vw - 32px);
+    left: 16px;
+    right: 16px;
+    max-width: calc(100vw - 32px);
   }
 }
 .popover-mask {
@@ -30,8 +44,8 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(5px);
+  background-color: transparent; // 移除暗色遮罩
+  z-index: 1000;
 }
 
 .list-item {

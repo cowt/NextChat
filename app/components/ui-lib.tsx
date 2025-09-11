@@ -32,14 +32,122 @@ export function Popover(props: {
   open?: boolean;
   onClose?: () => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [alignRight, setAlignRight] = useState(false);
+  const [contentStyle, setContentStyle] = useState<React.CSSProperties>({});
+
+  useEffect(() => {
+    if (!props.open) return;
+    const el = containerRef.current;
+    const panel = contentRef.current;
+    if (!el || !panel) return;
+
+    // 先假设靠左对齐，待测量后决定是否右对齐以避免右侧溢出
+    setAlignRight(false);
+
+    // 找到 chat 容器，限制在 chat 区域内
+    const chatRoot = el.closest(
+      'div[class*="chat-input-panel"], div[class*="chat-body-container"]',
+    ) as HTMLElement | null;
+
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      const panelWidth = panel.offsetWidth || 520;
+
+      const chatRect = chatRoot
+        ? chatRoot.getBoundingClientRect()
+        : ({ left: 0, right: window.innerWidth } as any);
+
+      // 基于用户要求：position: fixed; left: 12px; bottom: 145px; width: calc(100% - 46px)
+      // 将其相对 chat 宽度与位置进行换算
+      const left = chatRect.left + 12;
+      const width = Math.max(320, chatRect.right - chatRect.left - 46);
+      const bottom = Math.max(12, window.innerHeight - chatRect.bottom + 145);
+
+      setContentStyle({
+        position: "fixed",
+        left,
+        bottom,
+        width,
+        maxWidth: width,
+      });
+
+      // 若触发按钮过于靠右，依旧标记右对齐（仅用于 class 切换可能的样式）
+      const overflowRight = left + width - (chatRect.right - 12);
+      setAlignRight(overflowRight > 0);
+    };
+
+    // 下一帧测量，确保 DOM 已渲染
+    const raf = requestAnimationFrame(measure);
+
+    // 视口变化/滚动/容器尺寸变化时重新计算
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    // 点击空白处关闭（捕获阶段，避免被内部 stopPropagation 影响）
+    const onDocMouseDown = (e: any) => {
+      const target = (e?.target || e?.srcElement) as Node;
+      if (
+        !contentRef.current?.contains(target) &&
+        !containerRef.current?.contains(target)
+      ) {
+        props.onClose?.();
+      }
+    };
+    document.addEventListener(
+      "mousedown",
+      onDocMouseDown as EventListener,
+      true,
+    );
+    // Esc 关闭
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        props.onClose?.();
+      }
+    };
+    window.addEventListener("keydown", onEsc);
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => measure());
+      try {
+        chatRoot && ro.observe(chatRoot);
+        panel && ro.observe(panel);
+      } catch {}
+    }
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+      document.removeEventListener(
+        "mousedown",
+        onDocMouseDown as EventListener,
+        true,
+      );
+      window.removeEventListener("keydown", onEsc);
+      try {
+        ro && ro.disconnect();
+      } catch {}
+    };
+  }, [props.open]);
+
   return (
-    <div className={styles.popover}>
+    <div className={styles.popover} ref={containerRef}>
       {props.children}
+      {/* 不渲染全屏遮罩，避免影响侧边栏点击 */}
       {props.open && (
-        <div className={styles["popover-mask"]} onClick={props.onClose}></div>
-      )}
-      {props.open && (
-        <div className={styles["popover-content"]}>{props.content}</div>
+        <div
+          ref={contentRef}
+          className={
+            alignRight
+              ? `${styles["popover-content"]} ${styles["popover-content-right"]}`
+              : styles["popover-content"]
+          }
+          style={contentStyle}
+        >
+          {props.content}
+        </div>
       )}
     </div>
   );

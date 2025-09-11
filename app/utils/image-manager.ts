@@ -188,7 +188,9 @@ class ImageManager {
       try {
         // 根据URL类型决定如何处理
         const isCacheUrl = url.includes(CACHE_URL_PREFIX);
-        const isLocalUrl = url.startsWith(window.location.origin);
+        // 视为同源路径：绝对同源或以 "/" 开头的相对路径
+        const isLocalUrl =
+          url.startsWith(window.location.origin) || url.startsWith("/");
         const isDataUrl = url.startsWith("data:image/");
         const isBlobUrl = url.startsWith("blob:");
         const isFileUrl = url.startsWith("file:");

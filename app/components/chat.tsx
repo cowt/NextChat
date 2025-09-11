@@ -48,6 +48,7 @@ import SizeIcon from "../icons/size.svg";
 import QualityIcon from "../icons/hd.svg";
 import StyleIcon from "../icons/palette.svg";
 import PluginIcon from "../icons/plugin.svg";
+import DiscoveryIcon from "../icons/discovery.svg";
 import ShortcutkeyIcon from "../icons/shortcutkey.svg";
 import McpToolIcon from "../icons/tool.svg";
 import HeadphoneIcon from "../icons/headphone.svg";
@@ -101,6 +102,7 @@ import {
   showPrompt,
   showToast,
 } from "./ui-lib";
+import { Popover } from "./ui-lib";
 import { useNavigate } from "react-router-dom";
 import {
   CHAT_PAGE_SIZE,
@@ -116,10 +118,203 @@ import { ContextPrompts, MaskAvatar, MaskConfig } from "./mask";
 import { useMaskStore } from "../store/mask";
 import { ChatCommandPrefix, useChatCommand, useCommand } from "../command";
 import { prettyObject } from "../utils/format";
+
+// 独立的 PinterestPanel 组件，避免父组件渲染导致输入框失焦
+function PinterestPanelStandalone(props: {
+  setUploading: (uploading: boolean) => void;
+  setAttachImages: React.Dispatch<React.SetStateAction<string[]>>;
+  onClose: () => void;
+}) {
+  const [pinQuery, setPinQuery] = useState("");
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pinImages, setPinImages] = useState<string[]>([]);
+  const quickPhrases = [
+    "线稿",
+    "fashion",
+    "art",
+    "design",
+    "illustration",
+    "photo",
+  ];
+
+  async function searchPinterest(q: string) {
+    const query = q.trim();
+    if (!query) return;
+    setPinLoading(true);
+    try {
+      const headers = getHeaders();
+      const res = await fetch(
+        `/api/pinterest?q=${encodeURIComponent(query)}&limit=5`,
+        {
+          method: "GET",
+          headers,
+        },
+      );
+      const data = await res.json();
+      const images: string[] = Array.isArray(data?.images)
+        ? data.images.map((it: any) => it?.imageUrl || it?.url).filter(Boolean)
+        : [];
+      setPinImages(images);
+    } catch {
+      setPinImages([]);
+    } finally {
+      setPinLoading(false);
+    }
+  }
+
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [gridCols, setGridCols] = useState(3);
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        const cols = Math.max(2, Math.min(4, Math.floor(w / 170)));
+        setGridCols(cols);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div ref={panelRef} style={{ width: "100%", maxWidth: "100%" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginBottom: 12,
+          minWidth: 0,
+          alignItems: "center",
+        }}
+      >
+        <input
+          value={pinQuery}
+          onChange={(e) => setPinQuery(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") {
+              searchPinterest(pinQuery);
+              e.preventDefault();
+            }
+          }}
+          onKeyUp={(e) => e.stopPropagation()}
+          onKeyPress={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          autoFocus
+          placeholder="搜索 Pinterest，如：线稿 跳跃"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "var(--border-in-light)",
+            background: "var(--white)",
+            color: "var(--black)",
+            outline: "none",
+          }}
+        />
+        <IconButton text={"搜索"} onClick={() => searchPinterest(pinQuery)} />
+      </div>
+
+      <div
+        style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}
+      >
+        {quickPhrases.map((p) => (
+          <button
+            key={p}
+            onClick={() => {
+              setPinQuery(p);
+              searchPinterest(p);
+            }}
+            style={{
+              padding: "6px 12px",
+              border: "var(--border-in-light)",
+              borderRadius: 10,
+              background: "var(--white)",
+              cursor: "pointer",
+            }}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+
+      <div
+        style={{
+          height: "1px",
+          background: "var(--border-in-light-color)",
+          opacity: 0.6,
+          margin: "8px 0 12px 0",
+        }}
+      />
+
+      <div style={{ maxHeight: "50vh", overflow: "auto" }}>
+        {pinLoading ? (
+          <div style={{ padding: 12, color: "var(--black)" }}>搜索中...</div>
+        ) : pinImages.length === 0 ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "column",
+              padding: 24,
+              color: "var(--black)",
+              gap: 6,
+              opacity: 0.8,
+            }}
+          >
+            <div style={{ opacity: 0.6 }}>
+              <DiscoveryIcon />
+            </div>
+            <div style={{ fontWeight: 600 }}>无结果</div>
+            <div style={{ fontSize: 12 }}>尝试搜索其他关键词</div>
+          </div>
+        ) : (
+          <OptimizedImageGrid
+            images={pinImages.map(
+              (u) => `/api/images/proxy?url=${encodeURIComponent(u)}`,
+            )}
+            columns={gridCols}
+            gap={8}
+            imageProps={{
+              style: { width: "100%", borderRadius: 6, objectFit: "contain" },
+              lazy: true,
+            }}
+            onImageClick={async (src) => {
+              try {
+                props.setUploading(true);
+                const res = await fetch(src);
+                const blob = await res.blob();
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const dataUrl = String(reader.result || "");
+                  props.setAttachImages((prev) => [...prev, dataUrl]);
+                  props.setUploading(false);
+                  props.onClose();
+                };
+                reader.onerror = () => {
+                  props.setUploading(false);
+                  props.onClose();
+                };
+                reader.readAsDataURL(blob);
+              } catch {
+                props.setUploading(false);
+                props.onClose();
+              }
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
 import { ExportMessageModal } from "./exporter";
 import { getClientConfig } from "../config/client";
 import { useAllModels } from "../utils/hooks";
-import { ClientApi, MultimodalContent } from "../client/api";
+import { ClientApi, MultimodalContent, getHeaders } from "../client/api";
 import { createTTSPlayer } from "../utils/audio";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "../utils/ms_edge_tts";
 
@@ -514,7 +709,7 @@ function useScrollToBottom(
 
 export function ChatActions(props: {
   uploadImage: () => void;
-  setAttachImages: (images: string[]) => void;
+  setAttachImages: React.Dispatch<React.SetStateAction<string[]>>;
   setUploading: (uploading: boolean) => void;
   showPromptModal: () => void;
   scrollToBottom: () => void;
@@ -525,6 +720,8 @@ export function ChatActions(props: {
   setUserInput: (input: string) => void;
   setShowChatSidePanel: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
+  const [showPinterest, setShowPinterest] = useState(false);
+
   const config = useAppConfig();
   const navigate = useNavigate();
   const chatStore = useChatStore();
@@ -649,6 +846,24 @@ export function ChatActions(props: {
             icon={props.uploading ? <LoadingButtonIcon /> : <ImageIcon />}
           />
         )}
+
+        <Popover
+          open={showPinterest}
+          onClose={() => setShowPinterest(false)}
+          content={
+            <PinterestPanelStandalone
+              setUploading={props.setUploading}
+              setAttachImages={props.setAttachImages}
+              onClose={() => setShowPinterest(false)}
+            />
+          }
+        >
+          <ChatAction
+            onClick={() => setShowPinterest((v) => !v)}
+            text={""}
+            icon={<DiscoveryIcon />}
+          />
+        </Popover>
         <ChatAction
           onClick={nextTheme}
           text={Locale.Chat.InputActions.Theme[theme]}
