@@ -59,10 +59,12 @@ export function Popover(props: {
         ? chatRoot.getBoundingClientRect()
         : ({ left: 0, right: window.innerWidth } as any);
 
-      // 基于用户要求：position: fixed; left: 12px; bottom: 145px; width: calc(100% - 46px)
-      // 将其相对 chat 宽度与位置进行换算
-      const left = chatRect.left + 12;
-      const width = Math.max(320, chatRect.right - chatRect.left - 46);
+      // 移动端采用全宽，避免出现横向滚动与布局抖动
+      const isMobile = window.innerWidth <= 600;
+      const left = isMobile ? 8 : chatRect.left + 12;
+      const width = isMobile
+        ? Math.max(280, Math.min(window.innerWidth - 16 * 2, panelWidth))
+        : Math.max(320, chatRect.right - chatRect.left - 46);
       const bottom = Math.max(12, window.innerHeight - chatRect.bottom + 145);
 
       setContentStyle({
@@ -84,6 +86,9 @@ export function Popover(props: {
     // 视口变化/滚动/容器尺寸变化时重新计算
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
+    // 防止移动端横向滚动引起的页面左右位移
+    const prevOverflowX = document.body.style.overflowX;
+    document.body.style.overflowX = "hidden";
     // 点击空白处关闭（捕获阶段，避免被内部 stopPropagation 影响）
     const onDocMouseDown = (e: any) => {
       const target = (e?.target || e?.srcElement) as Node;
@@ -120,6 +125,7 @@ export function Popover(props: {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
+      document.body.style.overflowX = prevOverflowX;
       document.removeEventListener(
         "mousedown",
         onDocMouseDown as EventListener,

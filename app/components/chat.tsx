@@ -35,6 +35,7 @@ import CloseIcon from "../icons/close.svg";
 import CancelIcon from "../icons/cancel.svg";
 import ImageIcon from "../icons/image.svg";
 import { ImageViewer, useImageViewer } from "./image-viewer";
+import { StyleKeywordSelector } from "./style-keyword-selector";
 import { OptimizedImage, OptimizedImageGrid } from "./optimized-image";
 import { ImageManagerPanel } from "./image-manager-panel";
 
@@ -144,7 +145,7 @@ function PinterestPanelStandalone(props: {
     try {
       const headers = getHeaders();
       const res = await fetch(
-        `/api/pinterest?q=${encodeURIComponent(query)}&limit=5`,
+        `/api/pinterest?q=${encodeURIComponent(query)}&limit=20`,
         {
           method: "GET",
           headers,
@@ -180,6 +181,18 @@ function PinterestPanelStandalone(props: {
 
   return (
     <div ref={panelRef} style={{ width: "100%", maxWidth: "100%" }}>
+      {/* 二级关键词选择器：水平标签 + 底部关键词（移动端支持滑动） */}
+      <div style={{ marginBottom: 12 }}>
+        <StyleKeywordSelector
+          onChange={(kws) => {
+            const query = kws.join(" ");
+            setPinQuery(query);
+            if (query) {
+              searchPinterest(query);
+            }
+          }}
+        />
+      </div>
       <div
         style={{
           display: "flex",
@@ -203,7 +216,7 @@ function PinterestPanelStandalone(props: {
           onKeyPress={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           autoFocus
-          placeholder="搜索 Pinterest，如：线稿 跳跃"
+          placeholder="搜索 StyleKeyword，如：线稿 跳跃"
           style={{
             flex: 1,
             minWidth: 0,
@@ -219,29 +232,6 @@ function PinterestPanelStandalone(props: {
       </div>
 
       <div
-        style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}
-      >
-        {quickPhrases.map((p) => (
-          <button
-            key={p}
-            onClick={() => {
-              setPinQuery(p);
-              searchPinterest(p);
-            }}
-            style={{
-              padding: "6px 12px",
-              border: "var(--border-in-light)",
-              borderRadius: 10,
-              background: "var(--white)",
-              cursor: "pointer",
-            }}
-          >
-            {p}
-          </button>
-        ))}
-      </div>
-
-      <div
         style={{
           height: "1px",
           background: "var(--border-in-light-color)",
@@ -250,7 +240,7 @@ function PinterestPanelStandalone(props: {
         }}
       />
 
-      <div style={{ maxHeight: "50vh", overflow: "auto" }}>
+      <div style={{ maxHeight: "42vh", overflow: "auto" }}>
         {pinLoading ? (
           <div style={{ padding: 12, color: "var(--black)" }}>搜索中...</div>
         ) : pinImages.length === 0 ? (
@@ -280,7 +270,22 @@ function PinterestPanelStandalone(props: {
             columns={gridCols}
             gap={8}
             imageProps={{
-              style: { width: "100%", borderRadius: 6, objectFit: "contain" },
+              // 结果强制 1:1 展示
+              containerStyle: {
+                width: "100%",
+                aspectRatio: "1 / 1",
+                borderRadius: 6,
+                overflow: "hidden",
+                background: "var(--white)",
+              },
+              // 1:1 内完整显示图片（letterbox）
+              style: {
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                objectPosition: "center",
+                background: "transparent",
+              },
               lazy: true,
             }}
             onImageClick={async (src) => {

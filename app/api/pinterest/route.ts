@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") || "";
-  const limit = parseInt(searchParams.get("limit") || "10", 10);
+  const limit = parseInt(searchParams.get("limit") || "10", 20);
 
   if (!q.trim()) {
     return NextResponse.json(
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const clampedLimit = Math.max(1, Math.min(30, isNaN(limit) ? 10 : limit));
+  const clampedLimit = limit;
 
   const base = process.env.PINTEREST_PROXY_URL;
   if (!base) {
