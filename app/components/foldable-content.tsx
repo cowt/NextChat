@@ -92,7 +92,8 @@ export function FoldableContent(props: {
       let index = 0;
       const target = currLine;
       const step = () => {
-        index += 1;
+        // 每帧推进多个字符，降低更新频率对布局的影响
+        index += 2;
         setTypedText(target.slice(0, index));
         if (index >= target.length && typingTimerRef.current) {
           window.clearInterval(typingTimerRef.current);
@@ -100,8 +101,8 @@ export function FoldableContent(props: {
           setIsTyping(false);
         }
       };
-      // 动画频率：约每 16ms 一个字符，兼顾性能
-      typingTimerRef.current = window.setInterval(step, 16);
+      // 降低频率：约每 40ms 执行一次
+      typingTimerRef.current = window.setInterval(step, 40);
       return () => {
         if (typingTimerRef.current) {
           window.clearInterval(typingTimerRef.current);
