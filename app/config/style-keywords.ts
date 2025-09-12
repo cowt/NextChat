@@ -6,7 +6,7 @@ export type StyleKeywordGroup = {
 // 二级关键词配置：前端可直接导入渲染
 export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
   {
-    styleType: "人物pose",
+    styleType: "人物 pose",
     styleName: [
       "photo reference poses",
       "anime reference poses",
@@ -17,7 +17,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Poster",
+    styleType: "海报",
     styleName: [
       "瑞士国际主义风格海报",
       "迷幻艺术海报",
@@ -27,7 +27,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Branding",
+    styleType: "品牌设计",
     styleName: [
       "极简主义品牌",
       "企业现代风品牌",
@@ -37,7 +37,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Logo Design",
+    styleType: "Logo 设计",
     styleName: [
       "扁平化Logo",
       "渐变色Logo",
@@ -47,7 +47,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Illustration",
+    styleType: "插画",
     styleName: [
       "扁平插画",
       "等距插画",
@@ -57,7 +57,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "IP Design",
+    styleType: "IP 设计",
     styleName: [
       "日系动漫风",
       "Q版/赤壁风",
@@ -67,7 +67,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Relight Your Picture",
+    styleType: "照片调色",
     styleName: ["电影感调色", "黑色电影", "黄金时刻", "霓虹灯光", "伦勃朗光"],
   },
   {
@@ -101,7 +101,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Product-to-Image",
+    styleType: "产品视觉化",
     styleName: [
       "超写实主义产品",
       "极简静物",
@@ -111,7 +111,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Merch Design",
+    styleType: "商品设计",
     styleName: ["波普艺术", "街头潮流风", "复古怀旧", "字体设计", "涂鸦艺术"],
   },
   {
@@ -119,7 +119,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     styleName: ["低面建模", "照片级渲染", "卡通3D", "体素艺术", "黏土风"],
   },
   {
-    styleType: "Emoji Generation",
+    styleType: "Emoji 设计",
     styleName: [
       "扁平化Emoji",
       "3D Fluent设计Emoji",
@@ -129,7 +129,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "3D Rotation",
+    styleType: "3D 渲染",
     styleName: [
       "线框渲染",
       "全息投影",
@@ -139,7 +139,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Outfit Swap",
+    styleType: "服装搭配",
     styleName: [
       "街头潮流服饰",
       "高级时装",
@@ -149,7 +149,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Make Your Own Stickers",
+    styleType: "贴纸设计",
     styleName: [
       "可爱/Kawaii风贴纸",
       "波普艺术贴纸",
@@ -159,7 +159,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Storyboarding",
+    styleType: "故事板",
     styleName: [
       "铅笔素描",
       "黑白影调",
@@ -169,7 +169,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Interior Design",
+    styleType: "室内设计",
     styleName: [
       "斯堪的纳维亚/北欧风",
       "工业风",
@@ -179,7 +179,7 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Font Design",
+    styleType: "字体设计",
     styleName: [
       "迷幻字体",
       "动态字体",
@@ -189,11 +189,11 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
     ],
   },
   {
-    styleType: "Fashion Modeling",
+    styleType: "时尚流行",
     styleName: ["高级时装", "街头风格", "先锋艺术", "杂志大片", "商业广告"],
   },
   {
-    styleType: "The Good Oldies",
+    styleType: "复古",
     styleName: [
       "复古照片",
       "装饰艺术风",
@@ -250,16 +250,16 @@ export const STYLE_KEYWORDS: StyleKeywordGroup[] = [
       "定格动画",
     ],
   },
-  {
-    styleType: "Banana Cat Figurine",
-    styleName: [
-      "潮玩手办",
-      "黏土定格风",
-      "低面建模",
-      "Meme超现实主义",
-      "超写实渲染",
-    ],
-  },
+  // {
+  //   styleType: "Banana Cat Figurine",
+  //   styleName: [
+  //     "潮玩手办",
+  //     "黏土定格风",
+  //     "低面建模",
+  //     "Meme超现实主义",
+  //     "超写实渲染",
+  //   ],
+  // },
   {
     styleType: "Repose it",
     styleName: [

@@ -18,6 +18,7 @@ export function StyleKeywordSelector(props: StyleKeywordSelectorProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [selected, setSelected] = useState<string[]>(props.value ?? []);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [showSwipeHint, setShowSwipeHint] = useState(true);
 
   const active = groups[activeIndex];
   const activeNames = useMemo(
@@ -39,6 +40,7 @@ export function StyleKeywordSelector(props: StyleKeywordSelectorProps) {
   const onTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
     const t = e.touches[0];
     touchState.current = { x: t.clientX, y: t.clientY, scrolling: false };
+    setShowSwipeHint(false);
   };
   const onTouchMove: React.TouchEventHandler<HTMLDivElement> = (e) => {
     const dx = e.touches[0].clientX - touchState.current.x;
@@ -53,6 +55,20 @@ export function StyleKeywordSelector(props: StyleKeywordSelectorProps) {
     }
   };
 
+  // 首次展示后，若用户开始滚动或点击任一 tab，隐藏提示
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = () => setShowSwipeHint(false);
+    const onScroll = () => setShowSwipeHint(false);
+    el.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", onWheel as any);
+      el.removeEventListener("scroll", onScroll as any);
+    };
+  }, []);
+
   return (
     <div className={clsx(styles.container, props.className)}>
       <div
@@ -61,6 +77,12 @@ export function StyleKeywordSelector(props: StyleKeywordSelectorProps) {
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
       >
+        {showSwipeHint && (
+          <div className={styles.swipeHint} aria-hidden>
+            {/* <span>滑动</span> */}
+            <span className={styles.swipeHintArrow}>➜</span>
+          </div>
+        )}
         {groups.map((g, idx) => (
           <button
             key={g.styleType}
@@ -68,12 +90,15 @@ export function StyleKeywordSelector(props: StyleKeywordSelectorProps) {
               styles.tabItem,
               idx === activeIndex && styles.active,
             )}
-            onClick={() => setActiveIndex(idx)}
+            onClick={() => {
+              setActiveIndex(idx);
+              setShowSwipeHint(false);
+            }}
             aria-label={`style-${g.styleType}`}
           >
             <PaletteIcon className={styles.tabIcon} />
             <span>{g.styleType}</span>
-            <span className={styles.tabCount}>{g.styleName.length}</span>
+            {/* <span className={styles.tabCount}>{g.styleName.length}</span> */}
           </button>
         ))}
       </div>

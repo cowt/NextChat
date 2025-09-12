@@ -15,6 +15,7 @@
   scrollbar-width: none;
   overscroll-behavior-x: contain;
   touch-action: pan-x;
+  position: relative;
 }
 
 .tabs::-webkit-scrollbar {
@@ -28,13 +29,14 @@
   height: 34px;
   padding: 0 12px;
   border-radius: 18px;
-  border: 1px solid var(--gray-200);
+  border: 1px solid var(--gray-300); // 未选中时保留细边框
   background: var(--white);
   color: var(--black);
   font-size: 14px;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
+  box-shadow: none; // 去除阴影
 }
 
 .tabIcon {
@@ -58,6 +60,7 @@
   border-color: var(--primary);
   color: var(--primary);
   background: color-mix(in srgb, var(--primary) 8%, transparent);
+  box-shadow: none;
 }
 
 .chips {
@@ -93,6 +96,32 @@
     padding: 7px 12px;
     font-size: 13px;
   }
+}
+
+// 滑动提示（闪烁箭头）
+.swipeHint {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  padding: 6px 8px 6px 24px;
+  background: linear-gradient(90deg, transparent 0%, var(--white) 40%);
+  color: var(--gray-600);
+  font-size: 12px;
+}
+
+.swipeHintArrow {
+  animation: blink 1.2s ease-in-out infinite alternate;
+  font-size: 14px;
+}
+
+@keyframes blink {
+  from { opacity: 0.2; transform: translateX(0); }
+  to { opacity: 1; transform: translateX(4px); }
 }
 
 

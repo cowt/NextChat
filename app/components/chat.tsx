@@ -165,6 +165,7 @@ function PinterestPanelStandalone(props: {
 
   const panelRef = useRef<HTMLDivElement>(null);
   const [gridCols, setGridCols] = useState(3);
+  const [selectingIndex, setSelectingIndex] = useState<number | null>(null);
   useEffect(() => {
     const el = panelRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -216,7 +217,7 @@ function PinterestPanelStandalone(props: {
           onKeyPress={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           autoFocus
-          placeholder="搜索 StyleKeyword，如：线稿 跳跃"
+          placeholder="如：线稿 跳跃"
           style={{
             flex: 1,
             minWidth: 0,
@@ -263,54 +264,75 @@ function PinterestPanelStandalone(props: {
             <div style={{ fontSize: 12 }}>尝试搜索其他关键词</div>
           </div>
         ) : (
-          <OptimizedImageGrid
-            images={pinImages.map(
-              (u) => `/api/images/proxy?url=${encodeURIComponent(u)}`,
-            )}
-            columns={gridCols}
-            gap={8}
-            imageProps={{
-              // 结果强制 1:1 展示
-              containerStyle: {
-                width: "100%",
-                aspectRatio: "1 / 1",
-                borderRadius: 6,
-                overflow: "hidden",
-                background: "var(--white)",
-              },
-              // 1:1 内完整显示图片（letterbox）
-              style: {
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-                objectPosition: "center",
-                background: "transparent",
-              },
-              lazy: true,
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+              gap: 8,
             }}
-            onImageClick={async (src) => {
-              try {
-                props.setUploading(true);
-                const res = await fetch(src);
-                const blob = await res.blob();
-                const reader = new FileReader();
-                reader.onload = () => {
-                  const dataUrl = String(reader.result || "");
-                  props.setAttachImages((prev) => [...prev, dataUrl]);
-                  props.setUploading(false);
-                  props.onClose();
-                };
-                reader.onerror = () => {
-                  props.setUploading(false);
-                  props.onClose();
-                };
-                reader.readAsDataURL(blob);
-              } catch {
-                props.setUploading(false);
-                props.onClose();
-              }
-            }}
-          />
+          >
+            {pinImages.map((u, idx) => {
+              const src = `/api/images/proxy?url=${encodeURIComponent(u)}`;
+              const isSelecting = selectingIndex === idx;
+              return (
+                <div
+                  key={src}
+                  role="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (selectingIndex !== null) return; // 防止多次点击导致多次写入
+                    setSelectingIndex(idx);
+                    try {
+                      props.setUploading(true);
+                      const res = await fetch(src, { cache: "no-store" });
+                      const blob = await res.blob();
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const dataUrl = String(reader.result || "");
+                        props.setAttachImages((prev) => [...prev, dataUrl]);
+                        props.setUploading(false);
+                        props.onClose();
+                      };
+                      reader.onerror = () => {
+                        props.setUploading(false);
+                        props.onClose();
+                      };
+                      reader.readAsDataURL(blob);
+                    } catch {
+                      props.setUploading(false);
+                      props.onClose();
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    aspectRatio: "1 / 1",
+                    borderRadius: 6,
+                    overflow: "hidden",
+                    background: "var(--white)",
+                    cursor: selectingIndex !== null ? "not-allowed" : "pointer",
+                    position: "relative",
+                    filter: isSelecting ? "grayscale(100%)" : undefined,
+                    opacity: isSelecting ? 0.5 : 1,
+                    pointerEvents: isSelecting ? "none" : "auto",
+                  }}
+                >
+                  <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      objectPosition: "center",
+                      background: "transparent",
+                      display: "block",
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
@@ -885,7 +907,7 @@ export function ChatActions(props: {
           }
         />
 
-        <ChatAction
+        {/* <ChatAction
           onClick={props.showPromptHints}
           text={Locale.Chat.InputActions.Prompt}
           icon={<PromptIcon />}
@@ -897,7 +919,7 @@ export function ChatActions(props: {
           }}
           text={Locale.Chat.InputActions.Masks}
           icon={<MaskIcon />}
-        />
+        /> */}
 
         <ChatAction
           text={Locale.Chat.InputActions.Clear}
