@@ -11,6 +11,8 @@ export type StyleKeywordSelectorProps = {
   value?: string[];
   onChange?: (keywords: string[]) => void;
   className?: string;
+  collapsed?: boolean; // 控制是否收起 chips
+  onTabClick?: (index: number) => void; // 点击一级分类回调
 };
 
 export function StyleKeywordSelector(props: StyleKeywordSelectorProps) {
@@ -93,6 +95,7 @@ export function StyleKeywordSelector(props: StyleKeywordSelectorProps) {
             onClick={() => {
               setActiveIndex(idx);
               setShowSwipeHint(false);
+              props.onTabClick?.(idx);
             }}
             aria-label={`style-${g.styleType}`}
           >
@@ -103,7 +106,7 @@ export function StyleKeywordSelector(props: StyleKeywordSelectorProps) {
         ))}
       </div>
 
-      {active && (
+      {active && !props.collapsed && (
         <div
           key={activeIndex}
           className={styles.chips}

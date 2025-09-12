@@ -129,6 +129,7 @@ function PinterestPanelStandalone(props: {
   const [pinQuery, setPinQuery] = useState("");
   const [pinLoading, setPinLoading] = useState(false);
   const [pinImages, setPinImages] = useState<string[]>([]);
+  const [chipsCollapsed, setChipsCollapsed] = useState(false);
   const quickPhrases = [
     "线稿",
     "fashion",
@@ -141,6 +142,7 @@ function PinterestPanelStandalone(props: {
   async function searchPinterest(q: string) {
     const query = q.trim();
     if (!query) return;
+    setChipsCollapsed(true); // 触发搜索后收起二级快捷词语
     setPinLoading(true);
     try {
       const headers = getHeaders();
@@ -185,6 +187,8 @@ function PinterestPanelStandalone(props: {
       {/* 二级关键词选择器：水平标签 + 底部关键词（移动端支持滑动） */}
       <div style={{ marginBottom: 12 }}>
         <StyleKeywordSelector
+          collapsed={chipsCollapsed}
+          onTabClick={() => setChipsCollapsed(false)}
           onChange={(kws) => {
             const query = kws.join(" ");
             setPinQuery(query);
@@ -229,7 +233,12 @@ function PinterestPanelStandalone(props: {
             outline: "none",
           }}
         />
-        <IconButton text={"搜索"} onClick={() => searchPinterest(pinQuery)} />
+        <IconButton
+          text={"搜索"}
+          onClick={() => {
+            searchPinterest(pinQuery);
+          }}
+        />
       </div>
 
       <div
@@ -241,7 +250,7 @@ function PinterestPanelStandalone(props: {
         }}
       />
 
-      <div style={{ maxHeight: "42vh", overflow: "auto" }}>
+      <div style={{ maxHeight: "21vh", overflow: "auto" }}>
         {pinLoading ? (
           <div style={{ padding: 12, color: "var(--black)" }}>搜索中...</div>
         ) : pinImages.length === 0 ? (

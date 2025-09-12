@@ -65,7 +65,13 @@ export function Popover(props: {
       const width = isMobile
         ? Math.max(280, Math.min(window.innerWidth - 16 * 2, panelWidth))
         : Math.max(320, chatRect.right - chatRect.left - 46);
-      const bottom = Math.max(12, window.innerHeight - chatRect.bottom + 145);
+      // 使弹层底部与输入面板顶部对齐
+      const bottom = Math.max(0, window.innerHeight - chatRect.top);
+      // 限制整体高度：不超过视口一半，且不超过输入框上方可用空间
+      const maxPanelHeight = Math.min(
+        Math.floor(window.innerHeight * 0.5),
+        Math.max(120, chatRect.top - 12),
+      );
 
       setContentStyle({
         position: "fixed",
@@ -73,6 +79,8 @@ export function Popover(props: {
         bottom,
         width,
         maxWidth: width,
+        maxHeight: maxPanelHeight,
+        overflow: "auto",
       });
 
       // 若触发按钮过于靠右，依旧标记右对齐（仅用于 class 切换可能的样式）

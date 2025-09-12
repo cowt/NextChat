@@ -104,11 +104,6 @@ declare global {
       ANNOUNCEMENT_URL?: string; // optional link
       ANNOUNCEMENT_LEVEL?: "info" | "warning" | "danger"; // optional visual level
       ANNOUNCEMENT_EXPIRES_AT?: string; // ISO timestamp, optional
-
-      // pinterest proxy
-      PINTEREST_PROXY_URL?: string; // primary pinterest proxy base, e.g. https://hulu.deno.dev
-      PINTEREST_PROXY_URLS?: string; // extra bases, comma separated
-      PINTEREST_IMAGE_PROXY_PREFIX?: string; // for CN region image rewrite, e.g. https://hulu.deno.dev/proxy
     }
   }
 }

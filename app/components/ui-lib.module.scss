@@ -32,11 +32,11 @@
 
 @media screen and (max-width: 600px) {
   .popover-content {
-    position: fixed; /* 避免相对父元素导致布局挤压 */
+    position: fixed; 
     width: calc(100vw - 24px);
     left: 12px;
     right: 12px;
-    bottom: 145px; /* 紧贴输入栏上方 */
+    bottom: 50px; 
     max-width: calc(100vw - 24px);
   }
 }
