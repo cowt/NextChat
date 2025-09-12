@@ -56,7 +56,54 @@ export async function GET(req: NextRequest) {
     });
 
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+
+    // optimize pinterest image url for CN users via proxy prefix, fallback to original urls
+    const imageProxyPrefix = process.env.PINTEREST_IMAGE_PROXY_PREFIX || "";
+
+    const countryFromGeo = (req as any).geo?.country as string | undefined;
+    const countryFromVercel =
+      req.headers.get("x-vercel-ip-country") || undefined;
+    const countryFromCF =
+      req.headers.get("cf-ipcountry") ||
+      req.headers.get("cf-ip-country") ||
+      undefined;
+
+    const isCN = [countryFromGeo, countryFromVercel, countryFromCF]
+      .filter(Boolean)
+      .some((c) => c?.toUpperCase() === "CN");
+
+    const shouldRewrite = !!imageProxyPrefix && isCN;
+
+    const pinimgRegex = /^https?:\/\/i\.pinimg\.com\//i;
+
+    function toProxy(url: string): string {
+      const safePrefix = imageProxyPrefix.endsWith("/")
+        ? imageProxyPrefix.slice(0, -1)
+        : imageProxyPrefix;
+      return `${safePrefix}/${encodeURIComponent(url)}`;
+    }
+
+    function rewriteValue(value: any): any {
+      if (!shouldRewrite) return value;
+      if (typeof value === "string" && pinimgRegex.test(value)) {
+        try {
+          return toProxy(value);
+        } catch {
+          // fallback to original url if building proxy url failed
+          return value;
+        }
+      }
+      if (Array.isArray(value)) return value.map(rewriteValue);
+      if (value && typeof value === "object") {
+        const out: Record<string, any> = {};
+        for (const [k, v] of Object.entries(value)) out[k] = rewriteValue(v);
+        return out;
+      }
+      return value;
+    }
+
+    const transformed = rewriteValue(data);
+    return NextResponse.json(transformed, { status: res.status });
   } catch (e: any) {
     return NextResponse.json(
       { success: false, message: e?.message || "fetch failed" },

@@ -21,6 +21,11 @@ import BotIconGrok from "../icons/llm-icons/grok.svg";
 import BotIconHunyuan from "../icons/llm-icons/hunyuan.svg";
 import BotIconDoubao from "../icons/llm-icons/doubao.svg";
 import BotIconChatglm from "../icons/llm-icons/chatglm.svg";
+import BotIconBytedance from "../icons/llm-icons/bytedance.svg";
+import BotIconFlux from "../icons/llm-icons/flux.svg";
+import BotIconIdeogram from "../icons/llm-icons/ideogram.svg";
+import BotIconRecraft from "../icons/llm-icons/recraft.svg";
+import BotIconLovart from "../icons/llm-icons/lovart.svg";
 
 export function getEmojiUrl(unified: string, style: EmojiStyle) {
   // Whoever owns this Content Delivery Network (CDN), I am using your CDN to serve emojis
@@ -47,6 +52,8 @@ export function AvatarPicker(props: {
 
 export function Avatar(props: { model?: ModelType; avatar?: string }) {
   let LlmIcon = BotIconDefault;
+  let useImage = false;
+  let imageSrc = "";
 
   if (props.model) {
     const modelName = props.model.toLowerCase();
@@ -68,7 +75,10 @@ export function Avatar(props: { model?: ModelType; avatar?: string }) {
       LlmIcon = BotIconClaude;
     } else if (modelName.includes("llama")) {
       LlmIcon = BotIconMeta;
-    } else if (modelName.startsWith("mixtral") || modelName.startsWith("codestral")) {
+    } else if (
+      modelName.startsWith("mixtral") ||
+      modelName.startsWith("codestral")
+    ) {
       LlmIcon = BotIconMistral;
     } else if (modelName.includes("deepseek")) {
       LlmIcon = BotIconDeepseek;
@@ -90,11 +100,31 @@ export function Avatar(props: { model?: ModelType; avatar?: string }) {
       modelName.startsWith("cogvideox-")
     ) {
       LlmIcon = BotIconChatglm;
+    } else if (modelName.includes("seedream")) {
+      LlmIcon = BotIconBytedance;
+    } else if (modelName.includes("flux")) {
+      LlmIcon = BotIconFlux;
+    } else if (modelName.includes("ideogram")) {
+      LlmIcon = BotIconIdeogram;
+    } else if (modelName.includes("recraft")) {
+      LlmIcon = BotIconRecraft;
+    } else if (modelName.includes("lovart") || modelName.includes("auto")) {
+      LlmIcon = BotIconLovart;
     }
 
     return (
       <div className="no-dark">
-        <LlmIcon className="user-avatar" width={30} height={30} />
+        {useImage ? (
+          <img
+            className="user-avatar"
+            width={30}
+            height={30}
+            src={imageSrc}
+            alt="lovart"
+          />
+        ) : (
+          <LlmIcon className="user-avatar" width={30} height={30} />
+        )}
       </div>
     );
   }
