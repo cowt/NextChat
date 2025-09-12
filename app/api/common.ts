@@ -58,15 +58,13 @@ export async function requestOpenai(req: NextRequest) {
     baseUrl = baseUrl.slice(0, -1);
   }
 
-  console.log("[Proxy] ", path);
-  console.log("[Base Url]", baseUrl);
+  if (process.env.DEBUG_PROXY === "true") {
+    console.log("[Proxy] ", path);
+    console.log("[Base Url]", baseUrl);
+  }
 
-  const timeoutId = setTimeout(
-    () => {
-      controller.abort();
-    },
-    10 * 60 * 1000,
-  );
+  const upstreamTimeoutMs = Number(process.env.UPSTREAM_TIMEOUT_MS || "120000");
+  const timeoutId = setTimeout(() => controller.abort(), upstreamTimeoutMs);
 
   if (isAzure) {
     const azureApiVersion =
@@ -107,7 +105,9 @@ export async function requestOpenai(req: NextRequest) {
   }
 
   const fetchUrl = cloudflareAIGatewayUrl(`${baseUrl}/${path}`);
-  console.log("fetchUrl", fetchUrl);
+  if (process.env.DEBUG_PROXY === "true") {
+    console.log("fetchUrl", fetchUrl);
+  }
   const fetchOptions: RequestInit = {
     headers: {
       "Content-Type": "application/json",
@@ -135,28 +135,44 @@ export async function requestOpenai(req: NextRequest) {
     : serverConfig.customModels;
   if (allowList && req.body) {
     try {
-      const clonedBody = await req.text();
-      fetchOptions.body = clonedBody;
+      // 保护：限制读取请求体的最大字节数，避免大体积 JSON 造成内存占用
+      const maxInspectBytes = Number(
+        process.env.OPENAI_REQUEST_BODY_MAX_INSPECT_SIZE || 512 * 1024,
+      );
+      const contentLengthHeader = req.headers.get("content-length") || "0";
+      const contentLength = Number(contentLengthHeader) || 0;
 
-      const jsonBody = JSON.parse(clonedBody) as { model?: string };
+      if (contentLength > 0 && contentLength > maxInspectBytes) {
+        if (process.env.DEBUG_PROXY === "true") {
+          console.warn(
+            `[Proxy] skip body inspect due to size ${contentLength} > ${maxInspectBytes}`,
+          );
+        }
+        // 跳过模型白名单校验，仅做透明转发，避免占用内存
+        fetchOptions.body = req.body as any;
+      } else {
+        const clonedBody = await req.text();
+        fetchOptions.body = clonedBody;
+        const jsonBody = JSON.parse(clonedBody) as { model?: string };
 
-      // not undefined and is false
-      if (
-        isModelNotavailableInServer(allowList, jsonBody?.model as string, [
-          ServiceProvider.OpenAI,
-          ServiceProvider.Azure,
-          jsonBody?.model as string, // support provider-unspecified model
-        ])
-      ) {
-        return NextResponse.json(
-          {
-            error: true,
-            message: `you are not allowed to use ${jsonBody?.model} model`,
-          },
-          {
-            status: 403,
-          },
-        );
+        // not undefined and is false
+        if (
+          isModelNotavailableInServer(allowList, jsonBody?.model as string, [
+            ServiceProvider.OpenAI,
+            ServiceProvider.Azure,
+            jsonBody?.model as string, // support provider-unspecified model
+          ])
+        ) {
+          return NextResponse.json(
+            {
+              error: true,
+              message: `you are not allowed to use ${jsonBody?.model} model`,
+            },
+            {
+              status: 403,
+            },
+          );
+        }
       }
     } catch (e) {
       console.error("[OpenAI] gpt4 filter", e);
@@ -172,9 +188,13 @@ export async function requestOpenai(req: NextRequest) {
     // Check if serverConfig.openaiOrgId is defined and not an empty string
     if (serverConfig.openaiOrgId && serverConfig.openaiOrgId.trim() !== "") {
       // If openaiOrganizationHeader is present, log it; otherwise, log that the header is not present
-      console.log("[Org ID]", openaiOrganizationHeader);
+      if (process.env.DEBUG_PROXY === "true") {
+        console.log("[Org ID]", openaiOrganizationHeader);
+      }
     } else {
-      console.log("[Org ID] is not set up.");
+      if (process.env.DEBUG_PROXY === "true") {
+        console.log("[Org ID] is not set up.");
+      }
     }
 
     // to prevent browser prompt for credentials

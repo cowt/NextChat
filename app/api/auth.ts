@@ -33,11 +33,15 @@ export function auth(req: NextRequest, modelProvider: ModelProvider) {
   const hashedCode = md5.hash(accessCode ?? "").trim();
 
   const serverConfig = getServerSideConfig();
-  console.log("[Auth] allowed hashed codes: ", [...serverConfig.codes]);
-  console.log("[Auth] got access code:", accessCode);
-  console.log("[Auth] hashed access code:", hashedCode);
-  console.log("[User IP] ", getIP(req));
-  console.log("[Time] ", new Date().toLocaleString());
+  if (process.env.DEBUG_AUTH === "true") {
+    const mask = (v: string) =>
+      v ? (v.length > 4 ? `${v.slice(0, 2)}****${v.slice(-2)}` : "****") : "";
+    console.log("[Auth] allowed hashed codes size:", serverConfig.codes.size);
+    console.log("[Auth] got access code:", mask(accessCode));
+    console.log("[Auth] hashed access code:", mask(hashedCode));
+    console.log("[User IP] ", getIP(req));
+    console.log("[Time] ", new Date().toLocaleString());
+  }
 
   if (serverConfig.needCode && !serverConfig.codes.has(hashedCode) && !apiKey) {
     return {
@@ -114,15 +118,21 @@ export function auth(req: NextRequest, modelProvider: ModelProvider) {
     }
 
     if (systemApiKey) {
-      console.log("[Auth] use system api key");
+      if (process.env.DEBUG_AUTH === "true") {
+        console.log("[Auth] use system api key");
+      }
       req.headers.set("Authorization", `Bearer ${systemApiKey}`);
       // 标记认证来源为服务端系统 key 注入
       req.headers.set("x-nextchat-auth-source", "system");
     } else {
-      console.log("[Auth] admin did not provide an api key");
+      if (process.env.DEBUG_AUTH === "true") {
+        console.log("[Auth] admin did not provide an api key");
+      }
     }
   } else {
-    console.log("[Auth] use user api key");
+    if (process.env.DEBUG_AUTH === "true") {
+      console.log("[Auth] use user api key");
+    }
     // 标记认证来源为用户 key
     req.headers.set("x-nextchat-auth-source", "user");
   }
