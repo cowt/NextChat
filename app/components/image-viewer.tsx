@@ -646,10 +646,24 @@ export function ImageViewer({
 
   // 触控左右切换交由 Lightbox 处理，这里不再额外处理
 
-  // slides 保持稳定引用，避免索引变化导致 Lightbox 重建从而闪烁
+  // slides 保持稳定引用：当前/邻近优先使用已缓存的数据源，避免重复走网络
   const slides = useMemo(() => {
-    return images.map((url) => ({ src: getProxiedImageUrl(url) }));
-  }, [images]);
+    const pickSrc = (url: string, index: number): string => {
+      // 当前图：优先使用正在展示/预备的本地地址
+      if (index === currentIndex) {
+        if (displaySrc) return displaySrc;
+        if (renderSrc) return renderSrc;
+      }
+      // 其它图：如果已经被我们预加载并存在缓存，则直接用 dataUrl
+      const cached = imageManager.getCacheStatus(url);
+      if (cached?.dataUrl && !cached.error) return cached.dataUrl;
+
+      // 否则回退到代理URL（由浏览器缓存接管）
+      return getProxiedImageUrl(url);
+    };
+
+    return images.map((url, idx) => ({ src: pickSrc(url, idx) }));
+  }, [images, currentIndex, displaySrc, renderSrc]);
 
   const plugins = useMemo(() => [Zoom, Fullscreen, Counter, Download], []);
   // Zoom 插件参数：开启滚轮/触控/键盘无级缩放
@@ -758,7 +772,7 @@ export function ImageViewer({
       close={onClose}
       slides={slides}
       index={currentIndex}
-      carousel={{ finite: images.length <= 1 }}
+      carousel={{ finite: images.length <= 1, preload: 0 as any }}
       animation={{ fade: 0 }}
       styles={lightboxStyles as any}
       plugins={plugins}
