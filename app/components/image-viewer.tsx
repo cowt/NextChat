@@ -5,7 +5,7 @@ import React, {
   useRef,
   useMemo,
 } from "react";
-import Image from "next/image";
+// 改用原生 img，避免 next/image 在 dataUrl 上反复生成 blob: URL
 import { useMobileScreen } from "../utils";
 import styles from "./image-viewer.module.scss";
 import clsx from "clsx";
@@ -67,13 +67,83 @@ export function ImageViewer({
   useQueue = false,
   showQueueStatus = false,
 }: ImageViewerProps) {
+  // ----------------------
+  // useImageNavigation 抽取
+  // ----------------------
+  const useImageNavigation = useCallback(
+    (opts: {
+      images: string[];
+      initialIndex: number;
+      onImageChange?: (index: number) => void;
+      enabled: boolean;
+    }) => {
+      const { images, initialIndex, onImageChange, enabled } = opts;
+      const [currentIndex, setCurrentIndex] = useState(initialIndex);
+      const hasMultipleImages = images.length > 1;
+      const lastNavAtRef = useRef<number>(0);
+
+      // 在可见状态从隐藏切换到显示时同步初始索引
+      const prevEnabledRef = useRef<boolean>(enabled);
+      useEffect(() => {
+        if (enabled && !prevEnabledRef.current) {
+          setCurrentIndex(initialIndex);
+        }
+        prevEnabledRef.current = enabled;
+      }, [enabled, initialIndex]);
+
+      const goToPrevious = useCallback(() => {
+        if (!hasMultipleImages) return;
+        const now = Date.now();
+        if (now - lastNavAtRef.current < 200) return;
+        lastNavAtRef.current = now;
+        setCurrentIndex((prev) => {
+          const newIndex = prev === 0 ? images.length - 1 : prev - 1;
+          onImageChange?.(newIndex);
+          return newIndex;
+        });
+      }, [hasMultipleImages, images.length, onImageChange]);
+
+      const goToNext = useCallback(() => {
+        if (!hasMultipleImages) return;
+        const now = Date.now();
+        if (now - lastNavAtRef.current < 200) return;
+        lastNavAtRef.current = now;
+        setCurrentIndex((prev) => {
+          const newIndex = prev === images.length - 1 ? 0 : prev + 1;
+          onImageChange?.(newIndex);
+          return newIndex;
+        });
+      }, [hasMultipleImages, images.length, onImageChange]);
+
+      return {
+        currentIndex,
+        setCurrentIndex,
+        hasMultipleImages,
+        goToPrevious,
+        goToNext,
+      } as const;
+    },
+    [],
+  );
+
   // 调试标识
   const instanceIdRef = useRef<string>(Math.random().toString(36).slice(2, 7));
   const settleLoaded = (loaded: boolean) => {
     setIsLoading(false);
     setImageLoaded(loaded);
   };
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const {
+    currentIndex,
+    setCurrentIndex,
+    hasMultipleImages,
+    goToPrevious,
+    goToNext,
+  } = useImageNavigation({
+    images,
+    initialIndex,
+    onImageChange,
+    enabled: visible,
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const isMobile = useMobileScreen();
@@ -82,14 +152,222 @@ export function ImageViewer({
   const touchStartY = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 缩放与拖拽
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const dragStart = useRef<{ x: number; y: number } | null>(null);
-  const lastNavAtRef = useRef<number>(0);
+  // 缩放与拖拽由 Hook 管理
   const prevIndexRef = useRef<number>(currentIndex);
   const lastSrcRef = useRef<string | undefined>(undefined);
+
+  // ----------------------
+  // useZoomAndDrag 抽取
+  // ----------------------
+  const useZoomAndDrag = useCallback(
+    (opts: { imageRef: React.RefObject<HTMLImageElement>; enabled: boolean }) => {
+      const { imageRef, enabled } = opts;
+      const scaleRef = useRef<number>(1);
+      const offsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+      const rafIdRef = useRef<number | null>(null);
+      const [scale, setScale] = useState(1);
+      const [offset, setOffset] = useState({ x: 0, y: 0 });
+      const [dragging, setDragging] = useState(false);
+      const dragStart = useRef<{ x: number; y: number } | null>(null);
+
+      const applyTransform = useCallback(() => {
+        if (!imageRef.current) return;
+        const transform = `translate(${offsetRef.current.x}px, ${offsetRef.current.y}px) scale(${scaleRef.current})`;
+        imageRef.current.style.transform = transform;
+      }, [imageRef]);
+
+      const scheduleApply = useCallback(() => {
+        if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = requestAnimationFrame(() => {
+          applyTransform();
+          rafIdRef.current = null;
+        });
+      }, [applyTransform]);
+
+      const clamp = (val: number, min: number, max: number) =>
+        Math.min(max, Math.max(min, val));
+
+      const zoomIn = useCallback(() => {
+        const next = clamp(Number((scaleRef.current + 0.2).toFixed(2)), 0.5, 4);
+        scaleRef.current = next;
+        setScale(next);
+        scheduleApply();
+      }, [scheduleApply]);
+
+      const zoomOut = useCallback(() => {
+        const next = clamp(Number((scaleRef.current - 0.2).toFixed(2)), 0.5, 4);
+        scaleRef.current = next;
+        setScale(next);
+        scheduleApply();
+      }, [scheduleApply]);
+
+      const resetZoom = useCallback(() => {
+        scaleRef.current = 1;
+        offsetRef.current = { x: 0, y: 0 };
+        setScale(1);
+        setOffset({ x: 0, y: 0 });
+        scheduleApply();
+      }, [scheduleApply]);
+
+      // 滚轮缩放
+      useEffect(() => {
+        if (!enabled) return;
+        let lastTs = 0;
+        const throttleMs = 50;
+        const onWheel = (e: WheelEvent) => {
+          if (!enabled) return;
+          e.preventDefault();
+          const now = Date.now();
+          if (now - lastTs < throttleMs) return;
+          lastTs = now;
+          const delta = e.deltaY > 0 ? -0.2 : 0.2;
+          scaleRef.current = clamp(
+            Number((scaleRef.current + delta).toFixed(2)),
+            0.5,
+            4,
+          );
+          setScale(scaleRef.current);
+          scheduleApply();
+        };
+
+        const el = containerRef.current;
+        if (el && enabled) {
+          el.addEventListener("wheel", onWheel, { passive: false });
+          return () => el.removeEventListener("wheel", onWheel);
+        }
+      }, [enabled, scheduleApply]);
+
+      const onMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
+        // 避免拦截按钮/图标等交互元素
+        const target = e.target as HTMLElement;
+        if (
+          target.closest(
+            "button, a, [role=button], .toolbar-button, .overlay-icon, .nav-hotzone",
+          )
+        ) {
+          return;
+        }
+        if (scaleRef.current <= 1) return;
+        setDragging(true);
+        dragStart.current = {
+          x: e.clientX - offsetRef.current.x,
+          y: e.clientY - offsetRef.current.y,
+        };
+      };
+
+      const onMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
+        if (!dragging || !dragStart.current) return;
+        offsetRef.current = {
+          x: e.clientX - dragStart.current.x,
+          y: e.clientY - dragStart.current.y,
+        };
+        if (Math.random() < 0.05) setOffset({ ...offsetRef.current });
+        scheduleApply();
+      };
+
+      const endDrag = () => {
+        setDragging(false);
+        dragStart.current = null;
+      };
+
+      useEffect(() => {
+        if (!enabled) return;
+        const up = () => endDrag();
+        window.addEventListener("mouseup", up);
+        window.addEventListener("mouseleave", up);
+        return () => {
+          window.removeEventListener("mouseup", up);
+          window.removeEventListener("mouseleave", up);
+        };
+      }, [enabled]);
+
+      // 触摸拖拽（移动端）
+      const onTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
+        if (!enabled) return;
+        // 避免阻止按钮/图标的点击生成
+        const target = e.target as HTMLElement;
+        if (
+          target.closest(
+            "button, a, [role=button], .toolbar-button, .overlay-icon, .nav-hotzone",
+          )
+        ) {
+          return;
+        }
+        if (scaleRef.current <= 1) return; // 未放大时交给外层做左右切换
+        if (e.touches.length !== 1) return;
+        const t = e.touches[0];
+        setDragging(true);
+        dragStart.current = {
+          x: t.clientX - offsetRef.current.x,
+          y: t.clientY - offsetRef.current.y,
+        };
+      };
+
+      const onTouchMove: React.TouchEventHandler<HTMLDivElement> = (e) => {
+        if (!enabled) return;
+        const target = e.target as HTMLElement;
+        if (
+          target.closest(
+            "button, a, [role=button], .toolbar-button, .overlay-icon, .nav-hotzone",
+          )
+        ) {
+          return;
+        }
+        if (!dragging || !dragStart.current) return;
+        const t = e.touches[0];
+        offsetRef.current = {
+          x: t.clientX - dragStart.current.x,
+          y: t.clientY - dragStart.current.y,
+        };
+        if (Math.random() < 0.08) setOffset({ ...offsetRef.current });
+        scheduleApply();
+      };
+
+      const onTouchEnd: React.TouchEventHandler<HTMLDivElement> = (e) => {
+        if (!enabled) return;
+        const target = e.target as HTMLElement;
+        if (
+          target.closest(
+            "button, a, [role=button], .toolbar-button, .overlay-icon, .nav-hotzone",
+          )
+        ) {
+          return;
+        }
+        if (!dragging) return;
+        endDrag();
+      };
+
+      // 当图片源变化或重新显示时，将当前状态应用到 DOM
+      useEffect(() => {
+        if (!enabled) return;
+        scaleRef.current = scale;
+        offsetRef.current = offset;
+        scheduleApply();
+      }, [enabled, scale, offset]);
+
+      return {
+        scale,
+        setScale,
+        offset,
+        setOffset,
+        dragging,
+        onMouseDown,
+        onMouseMove,
+        onTouchStart,
+        onTouchMove,
+        onTouchEnd,
+        resetZoom,
+        zoomIn,
+        zoomOut,
+        scaleRef,
+        applyTransformNow: scheduleApply,
+      } as const;
+    },
+    [],
+  );
+
+  const zoomDrag = useZoomAndDrag({ imageRef, enabled: visible });
+  const { zoomIn, zoomOut, resetZoom } = zoomDrag;
 
   // 队列加载状态
   const [queueImageDataUrl, setQueueImageDataUrl] = useState<
@@ -98,10 +376,12 @@ export function ImageViewer({
   const [queueImageLoading, setQueueImageLoading] = useState(false);
   const [queueImageError, setQueueImageError] = useState<string | undefined>();
   const [queueImageBlob, setQueueImageBlob] = useState<Blob | undefined>();
-  const currentObjectUrlRef = useRef<string | null>(null);
+  // 预生成的新图 objectURL（尚未显示）
+  const preparedObjectUrlRef = useRef<string | null>(null);
+  // 当前正在展示的 objectURL（显示中）
+  const activeObjectUrlRef = useRef<string | null>(null);
 
   const currentImage = images[currentIndex];
-  const hasMultipleImages = images.length > 1;
 
   // 队列加载当前图片
   useEffect(() => {
@@ -296,16 +576,14 @@ export function ImageViewer({
     enabled: visible && !useQueue, // 只在非队列模式且预览时预加载
   });
 
-  // 仅在从隐藏到显示时重置状态，避免因 images 引用变化导致索引重置
+  // 仅在从隐藏到显示时重置缩放与偏移（索引重置已在 useImageNavigation 中处理）
   const prevVisibleRef = useRef<boolean>(visible);
   useEffect(() => {
     if (visible && !prevVisibleRef.current) {
-      setCurrentIndex(initialIndex);
-      setScale(1);
-      setOffset({ x: 0, y: 0 });
+      zoomDrag.resetZoom();
     }
     prevVisibleRef.current = visible;
-  }, [visible, initialIndex]);
+  }, [visible, initialIndex, zoomDrag]);
 
   // 优化状态同步逻辑：当 currentImage 变化时重置加载状态
   useEffect(() => {
@@ -377,36 +655,6 @@ export function ImageViewer({
 
   // 移除快速加载备用方案，避免与主要加载机制冲突
 
-  const goToPrevious = useCallback(() => {
-    if (!hasMultipleImages) return;
-    const now = Date.now();
-    if (now - lastNavAtRef.current < 200) {
-      return;
-    }
-    lastNavAtRef.current = now;
-    setCurrentIndex((prev) => {
-      const newIndex = prev === 0 ? images.length - 1 : prev - 1;
-
-      onImageChange?.(newIndex);
-      return newIndex;
-    });
-  }, [hasMultipleImages, images.length, onImageChange]);
-
-  const goToNext = useCallback(() => {
-    if (!hasMultipleImages) return;
-    const now = Date.now();
-    if (now - lastNavAtRef.current < 200) {
-      return;
-    }
-    lastNavAtRef.current = now;
-    setCurrentIndex((prev) => {
-      const newIndex = prev === images.length - 1 ? 0 : prev + 1;
-
-      onImageChange?.(newIndex);
-      return newIndex;
-    });
-  }, [hasMultipleImages, images.length, onImageChange]);
-
   const downloadCurrentImage = useCallback(async () => {
     if (!currentImage) return;
 
@@ -437,39 +685,93 @@ export function ImageViewer({
     }
   }, [currentImage, currentIndex, currentImageBlob, queueImageBlob, useQueue]);
 
-  // 生成用于渲染的 src（优先 Blob → 退到 dataUrl），并管理 URL 释放
-  const renderSrc = useMemo(() => {
-    // 清理旧的 objectURL
-    if (currentObjectUrlRef.current) {
-      URL.revokeObjectURL(currentObjectUrlRef.current);
-      currentObjectUrlRef.current = null;
-    }
+  // 生成用于渲染的 src（优先 Blob → 退到 dataUrl），并仅在源变更时更新，避免频繁创建 blob: URL 导致图片重复加载
+  const lastBlobRef = useRef<Blob | undefined>(undefined);
+  const lastDataUrlRef = useRef<string | undefined>(undefined);
+  const [renderSrc, setRenderSrc] = useState<string | undefined>(undefined);
+  // 实际用于 <img> 的展示 src；在新图片加载完成前保持为上一张，避免闪白
+  const [displaySrc, setDisplaySrc] = useState<string | undefined>(undefined);
 
+  useEffect(() => {
     const blob = useQueue ? queueImageBlob : currentImageBlob;
     const dataUrl = useQueue ? queueImageDataUrl : currentImageDataUrl;
-    if (blob && blob.type?.startsWith("image/")) {
+
+    // 如果 Blob 发生变化，创建“预备”的 objectURL（不立刻替换正在展示的图片）
+    if (blob && blob !== lastBlobRef.current) {
+      if (
+        preparedObjectUrlRef.current &&
+        preparedObjectUrlRef.current !== activeObjectUrlRef.current
+      ) {
+        URL.revokeObjectURL(preparedObjectUrlRef.current);
+      }
       const url = URL.createObjectURL(blob);
-      currentObjectUrlRef.current = url;
-      return url;
+      preparedObjectUrlRef.current = url;
+      lastBlobRef.current = blob;
+      lastDataUrlRef.current = undefined;
+      setRenderSrc(url);
+      return;
     }
-    return dataUrl;
-  }, [
-    useQueue,
-    queueImageBlob,
-    currentImageBlob,
-    queueImageDataUrl,
-    currentImageDataUrl,
-  ]);
+
+    // 无 Blob 时，若 dataUrl 变化则更新
+    if (!blob && dataUrl && dataUrl !== lastDataUrlRef.current) {
+      // 释放未使用的预备 URL（与当前展示无关）
+      if (
+        preparedObjectUrlRef.current &&
+        preparedObjectUrlRef.current !== activeObjectUrlRef.current
+      ) {
+        URL.revokeObjectURL(preparedObjectUrlRef.current);
+        preparedObjectUrlRef.current = null;
+      }
+      lastBlobRef.current = undefined;
+      lastDataUrlRef.current = dataUrl;
+      setRenderSrc(dataUrl);
+      return;
+    }
+
+    // 源未变化，不做任何事，保持现有 renderSrc，避免触发重新加载
+  }, [useQueue, queueImageBlob, currentImageBlob, queueImageDataUrl, currentImageDataUrl]);
 
   // 卸载时释放 URL
   useEffect(() => {
     return () => {
-      if (currentObjectUrlRef.current) {
-        URL.revokeObjectURL(currentObjectUrlRef.current);
-        currentObjectUrlRef.current = null;
+      if (preparedObjectUrlRef.current) {
+        URL.revokeObjectURL(preparedObjectUrlRef.current);
+        preparedObjectUrlRef.current = null;
+      }
+      if (activeObjectUrlRef.current) {
+        URL.revokeObjectURL(activeObjectUrlRef.current);
+        activeObjectUrlRef.current = null;
       }
     };
   }, []);
+
+  // 预加载即将显示的图片，加载完成后再切换 displaySrc，并以淡入效果呈现
+  useEffect(() => {
+    if (!renderSrc) return;
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      // 开始淡入：先将当前图片标记为未加载，切换 src 后下一帧再标记为已加载
+      setImageLoaded(false);
+      setDisplaySrc(renderSrc);
+      // 如果是 objectURL，更新“正在展示”的 URL 并释放旧的
+      if (renderSrc.startsWith("blob:")) {
+        if (activeObjectUrlRef.current && activeObjectUrlRef.current !== renderSrc) {
+          try { URL.revokeObjectURL(activeObjectUrlRef.current); } catch {}
+        }
+        activeObjectUrlRef.current = renderSrc;
+      }
+      requestAnimationFrame(() => {
+        if (!cancelled) setImageLoaded(true);
+      });
+    };
+    img.onerror = () => {
+      if (!cancelled) settleLoaded(false);
+    };
+    img.src = renderSrc;
+    return () => { cancelled = true; };
+  }, [renderSrc]);
 
   // 键盘导航
   useEffect(() => {
@@ -516,6 +818,20 @@ export function ImageViewer({
   const handleImageError = () => {
     settleLoaded(false);
   };
+
+  // 允许在未放大时进行 HTML5 拖拽（拖出到其它应用/标签）
+  const handleImageDragStart = useCallback(
+    (e: React.DragEvent<HTMLImageElement>) => {
+      if (!renderSrc) return;
+      try {
+        e.dataTransfer.effectAllowed = "copy";
+        // 标准 URL 拖拽类型
+        e.dataTransfer.setData("text/uri-list", renderSrc);
+        e.dataTransfer.setData("text/plain", renderSrc);
+      } catch {}
+    },
+    [renderSrc],
+  );
 
   // 兜底：如果浏览器已经从缓存同步完成（complete=true），但未触发 onLoad，主动标记加载完成
   useEffect(() => {
@@ -564,78 +880,11 @@ export function ImageViewer({
     }
   };
 
-  // 缩放相关
-  const clamp = (val: number, min: number, max: number) =>
-    Math.min(max, Math.max(min, val));
-  const zoomIn = () =>
-    setScale((s) => clamp(Number((s + 0.2).toFixed(2)), 0.5, 4));
-  const zoomOut = () =>
-    setScale((s) => clamp(Number((s - 0.2).toFixed(2)), 0.5, 4));
-  const resetZoom = () => {
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
-  };
-
-  // 使用useEffect添加原生wheel事件监听器，以避免被动监听器警告
-  useEffect(() => {
-    // 节流滚轮缩放，避免频繁触发状态更新
-    let lastTs = 0;
-    const throttleMs = 50;
-    const handleWheel = (e: WheelEvent) => {
-      if (!visible) return;
-      e.preventDefault();
-      const now = Date.now();
-      if (now - lastTs < throttleMs) return;
-      lastTs = now;
-      const delta = e.deltaY > 0 ? -0.2 : 0.2;
-      setScale((s) => clamp(Number((s + delta).toFixed(2)), 0.5, 4));
-    };
-
-    if (containerRef.current && visible) {
-      // 明确设置为非被动模式
-      containerRef.current.addEventListener("wheel", handleWheel, {
-        passive: false,
-      });
-
-      return () => {
-        const currentContainer = containerRef.current;
-        if (currentContainer) {
-          currentContainer.removeEventListener("wheel", handleWheel);
-        }
-      };
-    }
-  }, [visible]);
-
-  // 拖拽
-  const onMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
-    if (scale <= 1) return;
-    setDragging(true);
-    dragStart.current = { x: e.clientX - offset.x, y: e.clientY - offset.y };
-  };
-
-  const onMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
-    if (!dragging || !dragStart.current) return;
-    setOffset({
-      x: e.clientX - dragStart.current.x,
-      y: e.clientY - dragStart.current.y,
-    });
-  };
-
-  const endDrag = () => {
-    setDragging(false);
-    dragStart.current = null;
-  };
-
+  // 当图片源变化或重新显示时，将当前状态应用到 DOM
   useEffect(() => {
     if (!visible) return;
-    const up = () => endDrag();
-    window.addEventListener("mouseup", up);
-    window.addEventListener("mouseleave", up);
-    return () => {
-      window.removeEventListener("mouseup", up);
-      window.removeEventListener("mouseleave", up);
-    };
-  }, [visible]);
+    zoomDrag.applyTransformNow();
+  }, [renderSrc, visible, zoomDrag]);
 
   // 触控手势处理
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -670,11 +919,29 @@ export function ImageViewer({
     <div
       className={clsx(styles["image-viewer-overlay"], className)}
       onClick={handleBackdropClick}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
+      onTouchStart={(e) => {
+        // 如果已放大，优先进行平移拖拽；否则用于左右切换
+        if (zoomDrag.scaleRef.current > 1) {
+          zoomDrag.onTouchStart(e);
+        } else {
+          handleTouchStart(e);
+        }
+      }}
+      onTouchMove={(e) => {
+        if (zoomDrag.scaleRef.current > 1) {
+          zoomDrag.onTouchMove(e);
+        }
+      }}
+      onTouchEnd={(e) => {
+        if (zoomDrag.scaleRef.current > 1) {
+          zoomDrag.onTouchEnd(e);
+        } else {
+          handleTouchEnd(e);
+        }
+      }}
       ref={containerRef}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
+      onMouseDown={zoomDrag.onMouseDown}
+      onMouseMove={zoomDrag.onMouseMove}
     >
       {hasMultipleImages && (
         <>
@@ -727,28 +994,25 @@ export function ImageViewer({
             ? queueImageBlob || queueImageDataUrl
             : currentImageBlob || currentImageDataUrl)
         ) && (
-          <Image
-            // key 带上索引，确保同一 URL 不同索引时也会触发重新渲染
+          <img
             key={`${currentImage}-${currentIndex}`}
             ref={imageRef}
-            src={renderSrc as string}
+            src={displaySrc as string}
             alt={`图片 ${currentIndex + 1}`}
             className={clsx(styles["main-image"], {
               [styles["image-loaded"]]: imageLoaded,
             })}
             style={{
-              transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-              cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
+              cursor:
+                zoomDrag.scaleRef.current > 1
+                  ? (zoomDrag.dragging ? "grabbing" : "grab")
+                  : "default",
             }}
             onLoad={handleImageLoad}
             onError={handleImageError}
-            onDragStart={(e) => e.preventDefault()}
-            sizes="(max-width: 768px) 100vw, 90vw"
-            priority={currentIndex === initialIndex}
+            draggable={zoomDrag.scaleRef.current <= 1}
+            onDragStart={handleImageDragStart}
             loading="eager"
-            width={1920}
-            height={1080}
-            unoptimized
           />
         )}
 
