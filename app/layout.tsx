@@ -2,6 +2,7 @@
 import "./styles/globals.scss";
 import "./styles/markdown.scss";
 import "./styles/highlight.scss";
+import "yet-another-react-lightbox/styles.css";
 import { getClientConfig } from "./config/client";
 import type { Metadata, Viewport } from "next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -50,7 +51,12 @@ export default function RootLayout({
         <script src="/serviceWorkerRegister.js" defer></script>
       </head>
       <body>
-        {children}
+        {/* Query Client Provider */}
+        {/**/}
+        {(() => {
+          const Providers = require("./providers").Providers;
+          return <Providers>{children}</Providers>;
+        })()}
         {serverConfig?.isVercel && (
           <>
             <SpeedInsights />

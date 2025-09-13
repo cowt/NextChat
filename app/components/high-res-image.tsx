@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
+import { imageManager } from "../utils/image-manager";
 import styles from "./high-res-image.module.scss";
 
 // 1x1 transparent placeholder，避免无缩略图时触发原图加载
@@ -78,9 +79,23 @@ export function HighResImage({
       // 延迟加载，避免阻塞缩略图显示
       setTimeout(preloadHighRes, 100);
     } else {
-      // 非预览模式下，只显示缩略图
+      // 非预览模式下：优先显示缩略图；无缩略图时异步生成低清占位，避免白块
       setCurrentSrc(thumbnail || PLACEHOLDER_SRC);
       setHighResLoaded(false);
+      if (!thumbnail && src) {
+        let cancelled = false;
+        imageManager
+          .loadImage(src, { compress: true, forceReload: false })
+          .then((res) => {
+            if (!cancelled && res?.dataUrl) {
+              setCurrentSrc(res.dataUrl);
+            }
+          })
+          .catch(() => {});
+        return () => {
+          cancelled = true;
+        };
+      }
     }
 
     // 清理函数

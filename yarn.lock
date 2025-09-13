@@ -2038,6 +2038,18 @@
   dependencies:
     tslib "^2.4.0"
 
+"@tanstack/query-core@5.87.4":
+  version "5.87.4"
+  resolved "https://registry.yarnpkg.com/@tanstack/query-core/-/query-core-5.87.4.tgz#1601d05ee5bf611328f2852cec763ed0c9a090cd"
+  integrity sha512-uNsg6zMxraEPDVO2Bn+F3/ctHi+Zsk+MMpcN8h6P7ozqD088F6mFY5TfGM7zuyIrL7HKpDyu6QHfLWiDxh3cuw==
+
+"@tanstack/react-query@^5.50.0":
+  version "5.87.4"
+  resolved "https://registry.yarnpkg.com/@tanstack/react-query/-/react-query-5.87.4.tgz#f0b0af38ffab642e8999c156e986dfc384662fe6"
+  integrity sha512-T5GT/1ZaNsUXf5I3RhcYuT17I4CPlbZgyLxc/ZGv7ciS6esytlbjb3DgUFO6c8JWYMDpdjSWInyGZUErgzqhcA==
+  dependencies:
+    "@tanstack/query-core" "5.87.4"
+
 "@tauri-apps/api@^2.1.1":
   version "2.1.1"
   resolved "https://registry.yarnpkg.com/@tauri-apps/api/-/api-2.1.1.tgz#77d4ddb683d31072de4e6a47c8613d9db011652b"
@@ -8621,6 +8633,11 @@ yargs@^17.3.1, yargs@^17.7.2:
     string-width "^4.2.3"
     y18n "^5.0.5"
     yargs-parser "^21.1.1"
+
+yet-another-react-lightbox@^3.25.0:
+  version "3.25.0"
+  resolved "https://registry.yarnpkg.com/yet-another-react-lightbox/-/yet-another-react-lightbox-3.25.0.tgz#9d3f92b9ac7b58cbbe007311d499c2ed34711bcc"
+  integrity sha512-NaCeEXCpdwoTvoOpxNK9gdW8+oHs79yVH+D2YeVQWRjH5i32e5CoXndAAFP2p8awzVYfSonherrE9JMTpfD3EA==
 
 yn@3.1.1:
   version "3.1.1"

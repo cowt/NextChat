@@ -11,7 +11,7 @@ import {
   imageQueueManager,
   QueueImageOptions,
 } from "../utils/image-queue-manager";
-import { ImageLoadResult } from "../utils/image-manager";
+import { ImageLoadResult, imageManager } from "../utils/image-manager";
 
 // 1x1 transparent placeholder，避免无缩略图时触发原图加载
 const PLACEHOLDER_SRC =
@@ -188,11 +188,27 @@ export function QueuedImage({
         loadHighResImage();
       }, 100);
     } else {
-      // 非预览模式下，只显示缩略图
+      // 非预览模式下：优先显示缩略图；若无缩略图，异步生成低清占位（避免白块）
       setCurrentSrc(thumbnail || PLACEHOLDER_SRC);
       setHighResLoaded(false);
       setIsLoading(false);
       setImageLoaded(true);
+
+      if (!thumbnail && src) {
+        let cancelled = false;
+        imageManager
+          .loadImage(src, { compress: true, forceReload: false })
+          .then((res) => {
+            if (!cancelled && res?.dataUrl) {
+              setCurrentSrc(res.dataUrl);
+            }
+          })
+          .catch(() => {});
+
+        return () => {
+          cancelled = true;
+        };
+      }
     }
 
     // 清理函数

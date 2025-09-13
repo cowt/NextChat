@@ -5,19 +5,14 @@ import React, {
   useRef,
   useMemo,
 } from "react";
-// 改用原生 img，避免 next/image 在 dataUrl 上反复生成 blob: URL
-import { useMobileScreen } from "../utils";
-import styles from "./image-viewer.module.scss";
-import clsx from "clsx";
 import { useImage } from "../utils/use-image";
 import { imageQueueManager } from "../utils/image-queue-manager";
 import { imageManager } from "../utils/image-manager";
-
-import CloseIcon from "../icons/close.svg";
-import DownloadIcon from "../icons/download.svg";
-import MaxIcon from "../icons/max.svg";
-import MinIcon from "../icons/min.svg";
-import ResetIcon from "../icons/reload.svg";
+import Lightbox from "yet-another-react-lightbox";
+import Zoom from "yet-another-react-lightbox/plugins/zoom";
+import Fullscreen from "yet-another-react-lightbox/plugins/fullscreen";
+import Counter from "yet-another-react-lightbox/plugins/counter";
+import Download from "yet-another-react-lightbox/plugins/download";
 
 export interface ImageViewerProps {
   images: string[];
@@ -57,6 +52,60 @@ function getProxiedImageUrl(originalUrl: string): string {
   }
 }
 
+// 顶层自定义 Hook：管理图片导航（必须在组件外声明，遵循 Hooks 规则）
+function useImageNavigation(opts: {
+  images: string[];
+  initialIndex: number;
+  onImageChange?: (index: number) => void;
+  enabled: boolean;
+}) {
+  const { images, initialIndex, onImageChange, enabled } = opts;
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const hasMultipleImages = images.length > 1;
+  const lastNavAtRef = useRef<number>(0);
+
+  // 在可见状态从隐藏切换到显示时同步初始索引
+  const prevEnabledRef = useRef<boolean>(enabled);
+  useEffect(() => {
+    if (enabled && !prevEnabledRef.current) {
+      setCurrentIndex(initialIndex);
+    }
+    prevEnabledRef.current = enabled;
+  }, [enabled, initialIndex]);
+
+  const goToPrevious = useCallback(() => {
+    if (!hasMultipleImages) return;
+    const now = Date.now();
+    if (now - lastNavAtRef.current < 200) return;
+    lastNavAtRef.current = now;
+    setCurrentIndex((prev) => {
+      const newIndex = prev === 0 ? images.length - 1 : prev - 1;
+      onImageChange?.(newIndex);
+      return newIndex;
+    });
+  }, [hasMultipleImages, images.length, onImageChange]);
+
+  const goToNext = useCallback(() => {
+    if (!hasMultipleImages) return;
+    const now = Date.now();
+    if (now - lastNavAtRef.current < 200) return;
+    lastNavAtRef.current = now;
+    setCurrentIndex((prev) => {
+      const newIndex = prev === images.length - 1 ? 0 : prev + 1;
+      onImageChange?.(newIndex);
+      return newIndex;
+    });
+  }, [hasMultipleImages, images.length, onImageChange]);
+
+  return {
+    currentIndex,
+    setCurrentIndex,
+    hasMultipleImages,
+    goToPrevious,
+    goToNext,
+  } as const;
+}
+
 export function ImageViewer({
   images,
   initialIndex = 0,
@@ -67,65 +116,6 @@ export function ImageViewer({
   useQueue = false,
   showQueueStatus = false,
 }: ImageViewerProps) {
-  // ----------------------
-  // useImageNavigation 抽取
-  // ----------------------
-  const useImageNavigation = useCallback(
-    (opts: {
-      images: string[];
-      initialIndex: number;
-      onImageChange?: (index: number) => void;
-      enabled: boolean;
-    }) => {
-      const { images, initialIndex, onImageChange, enabled } = opts;
-      const [currentIndex, setCurrentIndex] = useState(initialIndex);
-      const hasMultipleImages = images.length > 1;
-      const lastNavAtRef = useRef<number>(0);
-
-      // 在可见状态从隐藏切换到显示时同步初始索引
-      const prevEnabledRef = useRef<boolean>(enabled);
-      useEffect(() => {
-        if (enabled && !prevEnabledRef.current) {
-          setCurrentIndex(initialIndex);
-        }
-        prevEnabledRef.current = enabled;
-      }, [enabled, initialIndex]);
-
-      const goToPrevious = useCallback(() => {
-        if (!hasMultipleImages) return;
-        const now = Date.now();
-        if (now - lastNavAtRef.current < 200) return;
-        lastNavAtRef.current = now;
-        setCurrentIndex((prev) => {
-          const newIndex = prev === 0 ? images.length - 1 : prev - 1;
-          onImageChange?.(newIndex);
-          return newIndex;
-        });
-      }, [hasMultipleImages, images.length, onImageChange]);
-
-      const goToNext = useCallback(() => {
-        if (!hasMultipleImages) return;
-        const now = Date.now();
-        if (now - lastNavAtRef.current < 200) return;
-        lastNavAtRef.current = now;
-        setCurrentIndex((prev) => {
-          const newIndex = prev === images.length - 1 ? 0 : prev + 1;
-          onImageChange?.(newIndex);
-          return newIndex;
-        });
-      }, [hasMultipleImages, images.length, onImageChange]);
-
-      return {
-        currentIndex,
-        setCurrentIndex,
-        hasMultipleImages,
-        goToPrevious,
-        goToNext,
-      } as const;
-    },
-    [],
-  );
-
   // 调试标识
   const instanceIdRef = useRef<string>(Math.random().toString(36).slice(2, 7));
   const settleLoaded = (loaded: boolean) => {
@@ -146,228 +136,11 @@ export function ImageViewer({
   });
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const isMobile = useMobileScreen();
-  const imageRef = useRef<HTMLImageElement>(null);
-  const touchStartX = useRef<number>(0);
-  const touchStartY = useRef<number>(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // 缩放与拖拽由 Hook 管理
+  // 镜像功能已移除
   const prevIndexRef = useRef<number>(currentIndex);
   const lastSrcRef = useRef<string | undefined>(undefined);
 
-  // ----------------------
-  // useZoomAndDrag 抽取
-  // ----------------------
-  const useZoomAndDrag = useCallback(
-    (opts: { imageRef: React.RefObject<HTMLImageElement>; enabled: boolean }) => {
-      const { imageRef, enabled } = opts;
-      const scaleRef = useRef<number>(1);
-      const offsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-      const rafIdRef = useRef<number | null>(null);
-      const [scale, setScale] = useState(1);
-      const [offset, setOffset] = useState({ x: 0, y: 0 });
-      const [dragging, setDragging] = useState(false);
-      const dragStart = useRef<{ x: number; y: number } | null>(null);
-
-      const applyTransform = useCallback(() => {
-        if (!imageRef.current) return;
-        const transform = `translate(${offsetRef.current.x}px, ${offsetRef.current.y}px) scale(${scaleRef.current})`;
-        imageRef.current.style.transform = transform;
-      }, [imageRef]);
-
-      const scheduleApply = useCallback(() => {
-        if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = requestAnimationFrame(() => {
-          applyTransform();
-          rafIdRef.current = null;
-        });
-      }, [applyTransform]);
-
-      const clamp = (val: number, min: number, max: number) =>
-        Math.min(max, Math.max(min, val));
-
-      const zoomIn = useCallback(() => {
-        const next = clamp(Number((scaleRef.current + 0.2).toFixed(2)), 0.5, 4);
-        scaleRef.current = next;
-        setScale(next);
-        scheduleApply();
-      }, [scheduleApply]);
-
-      const zoomOut = useCallback(() => {
-        const next = clamp(Number((scaleRef.current - 0.2).toFixed(2)), 0.5, 4);
-        scaleRef.current = next;
-        setScale(next);
-        scheduleApply();
-      }, [scheduleApply]);
-
-      const resetZoom = useCallback(() => {
-        scaleRef.current = 1;
-        offsetRef.current = { x: 0, y: 0 };
-        setScale(1);
-        setOffset({ x: 0, y: 0 });
-        scheduleApply();
-      }, [scheduleApply]);
-
-      // 滚轮缩放
-      useEffect(() => {
-        if (!enabled) return;
-        let lastTs = 0;
-        const throttleMs = 50;
-        const onWheel = (e: WheelEvent) => {
-          if (!enabled) return;
-          e.preventDefault();
-          const now = Date.now();
-          if (now - lastTs < throttleMs) return;
-          lastTs = now;
-          const delta = e.deltaY > 0 ? -0.2 : 0.2;
-          scaleRef.current = clamp(
-            Number((scaleRef.current + delta).toFixed(2)),
-            0.5,
-            4,
-          );
-          setScale(scaleRef.current);
-          scheduleApply();
-        };
-
-        const el = containerRef.current;
-        if (el && enabled) {
-          el.addEventListener("wheel", onWheel, { passive: false });
-          return () => el.removeEventListener("wheel", onWheel);
-        }
-      }, [enabled, scheduleApply]);
-
-      const onMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
-        // 避免拦截按钮/图标等交互元素
-        const target = e.target as HTMLElement;
-        if (
-          target.closest(
-            "button, a, [role=button], .toolbar-button, .overlay-icon, .nav-hotzone",
-          )
-        ) {
-          return;
-        }
-        if (scaleRef.current <= 1) return;
-        setDragging(true);
-        dragStart.current = {
-          x: e.clientX - offsetRef.current.x,
-          y: e.clientY - offsetRef.current.y,
-        };
-      };
-
-      const onMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
-        if (!dragging || !dragStart.current) return;
-        offsetRef.current = {
-          x: e.clientX - dragStart.current.x,
-          y: e.clientY - dragStart.current.y,
-        };
-        if (Math.random() < 0.05) setOffset({ ...offsetRef.current });
-        scheduleApply();
-      };
-
-      const endDrag = () => {
-        setDragging(false);
-        dragStart.current = null;
-      };
-
-      useEffect(() => {
-        if (!enabled) return;
-        const up = () => endDrag();
-        window.addEventListener("mouseup", up);
-        window.addEventListener("mouseleave", up);
-        return () => {
-          window.removeEventListener("mouseup", up);
-          window.removeEventListener("mouseleave", up);
-        };
-      }, [enabled]);
-
-      // 触摸拖拽（移动端）
-      const onTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
-        if (!enabled) return;
-        // 避免阻止按钮/图标的点击生成
-        const target = e.target as HTMLElement;
-        if (
-          target.closest(
-            "button, a, [role=button], .toolbar-button, .overlay-icon, .nav-hotzone",
-          )
-        ) {
-          return;
-        }
-        if (scaleRef.current <= 1) return; // 未放大时交给外层做左右切换
-        if (e.touches.length !== 1) return;
-        const t = e.touches[0];
-        setDragging(true);
-        dragStart.current = {
-          x: t.clientX - offsetRef.current.x,
-          y: t.clientY - offsetRef.current.y,
-        };
-      };
-
-      const onTouchMove: React.TouchEventHandler<HTMLDivElement> = (e) => {
-        if (!enabled) return;
-        const target = e.target as HTMLElement;
-        if (
-          target.closest(
-            "button, a, [role=button], .toolbar-button, .overlay-icon, .nav-hotzone",
-          )
-        ) {
-          return;
-        }
-        if (!dragging || !dragStart.current) return;
-        const t = e.touches[0];
-        offsetRef.current = {
-          x: t.clientX - dragStart.current.x,
-          y: t.clientY - dragStart.current.y,
-        };
-        if (Math.random() < 0.08) setOffset({ ...offsetRef.current });
-        scheduleApply();
-      };
-
-      const onTouchEnd: React.TouchEventHandler<HTMLDivElement> = (e) => {
-        if (!enabled) return;
-        const target = e.target as HTMLElement;
-        if (
-          target.closest(
-            "button, a, [role=button], .toolbar-button, .overlay-icon, .nav-hotzone",
-          )
-        ) {
-          return;
-        }
-        if (!dragging) return;
-        endDrag();
-      };
-
-      // 当图片源变化或重新显示时，将当前状态应用到 DOM
-      useEffect(() => {
-        if (!enabled) return;
-        scaleRef.current = scale;
-        offsetRef.current = offset;
-        scheduleApply();
-      }, [enabled, scale, offset]);
-
-      return {
-        scale,
-        setScale,
-        offset,
-        setOffset,
-        dragging,
-        onMouseDown,
-        onMouseMove,
-        onTouchStart,
-        onTouchMove,
-        onTouchEnd,
-        resetZoom,
-        zoomIn,
-        zoomOut,
-        scaleRef,
-        applyTransformNow: scheduleApply,
-      } as const;
-    },
-    [],
-  );
-
-  const zoomDrag = useZoomAndDrag({ imageRef, enabled: visible });
-  const { zoomIn, zoomOut, resetZoom } = zoomDrag;
+  // 旧的缩放/拖拽 Hook 已移除，由 Lightbox 插件处理
 
   // 队列加载状态
   const [queueImageDataUrl, setQueueImageDataUrl] = useState<
@@ -576,14 +349,14 @@ export function ImageViewer({
     enabled: visible && !useQueue, // 只在非队列模式且预览时预加载
   });
 
-  // 仅在从隐藏到显示时重置缩放与偏移（索引重置已在 useImageNavigation 中处理）
+  // 仅在从隐藏到显示时同步索引（缩放由 Lightbox 接管）
   const prevVisibleRef = useRef<boolean>(visible);
   useEffect(() => {
     if (visible && !prevVisibleRef.current) {
-      zoomDrag.resetZoom();
+      setCurrentIndex(initialIndex);
     }
     prevVisibleRef.current = visible;
-  }, [visible, initialIndex, zoomDrag]);
+  }, [visible, initialIndex]);
 
   // 优化状态同步逻辑：当 currentImage 变化时重置加载状态
   useEffect(() => {
@@ -643,6 +416,9 @@ export function ImageViewer({
     currentImageDataUrl,
     currentImageError,
     currentIndex,
+    // 依赖中包含加载中的状态，避免 hooks/exhaustive-deps 警告
+    queueImageLoading,
+    currentImageLoading,
   ]);
 
   // 错误出现时立即收尾
@@ -729,7 +505,13 @@ export function ImageViewer({
     }
 
     // 源未变化，不做任何事，保持现有 renderSrc，避免触发重新加载
-  }, [useQueue, queueImageBlob, currentImageBlob, queueImageDataUrl, currentImageDataUrl]);
+  }, [
+    useQueue,
+    queueImageBlob,
+    currentImageBlob,
+    queueImageDataUrl,
+    currentImageDataUrl,
+  ]);
 
   // 卸载时释放 URL
   useEffect(() => {
@@ -757,8 +539,13 @@ export function ImageViewer({
       setDisplaySrc(renderSrc);
       // 如果是 objectURL，更新“正在展示”的 URL 并释放旧的
       if (renderSrc.startsWith("blob:")) {
-        if (activeObjectUrlRef.current && activeObjectUrlRef.current !== renderSrc) {
-          try { URL.revokeObjectURL(activeObjectUrlRef.current); } catch {}
+        if (
+          activeObjectUrlRef.current &&
+          activeObjectUrlRef.current !== renderSrc
+        ) {
+          try {
+            URL.revokeObjectURL(activeObjectUrlRef.current);
+          } catch {}
         }
         activeObjectUrlRef.current = renderSrc;
       }
@@ -770,46 +557,25 @@ export function ImageViewer({
       if (!cancelled) settleLoaded(false);
     };
     img.src = renderSrc;
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [renderSrc]);
 
-  // 键盘导航
+  // 键盘下载快捷键（Lightbox 已内置方向键/ESC 行为）
   useEffect(() => {
     if (!visible) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      e.preventDefault();
-      switch (e.key) {
-        case "Escape":
-          onClose();
-          break;
-        case "ArrowLeft":
-          goToPrevious();
-          break;
-        case "ArrowRight":
-          goToNext();
-          break;
-        case "s":
-        case "S":
-          if (e.metaKey || e.ctrlKey) {
-            e.preventDefault();
-            downloadCurrentImage();
-          }
-          break;
+      if ((e.key === "s" || e.key === "S") && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        downloadCurrentImage();
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [
-    visible,
-    currentIndex,
-    images,
-    onClose,
-    goToPrevious,
-    goToNext,
-    downloadCurrentImage,
-  ]);
+  }, [visible, downloadCurrentImage]);
 
   const handleImageLoad = () => {
     settleLoaded(true);
@@ -833,20 +599,16 @@ export function ImageViewer({
     [renderSrc],
   );
 
-  // 兜底：如果浏览器已经从缓存同步完成（complete=true），但未触发 onLoad，主动标记加载完成
+  // 兜底：如果浏览器已缓存完成但未触发 onLoad（迁移后主要通过预加载处理）
   useEffect(() => {
     if (!visible) return;
-    const img = imageRef.current;
-    // 仅当 key 对应的 src 与当前期望一致时，才用 complete 快速收尾
     const expectedSrc = useQueue
       ? queueImageDataUrl
       : currentImageDataUrl ||
         (currentImage && imageManager.getCacheStatus(currentImage)?.dataUrl) ||
         undefined;
-    if (img && expectedSrc && img.getAttribute("src") === expectedSrc) {
-      if (img.complete && img.naturalWidth > 0) {
-        settleLoaded(true);
-      }
+    if (expectedSrc === displaySrc && imageLoaded) {
+      settleLoaded(true);
     }
   }, [
     visible,
@@ -855,6 +617,8 @@ export function ImageViewer({
     currentImageDataUrl,
     currentImage,
     currentIndex,
+    displaySrc,
+    imageLoaded,
   ]);
 
   // 卸载清理：当前无计时器，无需处理
@@ -880,229 +644,133 @@ export function ImageViewer({
     }
   };
 
-  // 当图片源变化或重新显示时，将当前状态应用到 DOM
+  // 触控左右切换交由 Lightbox 处理，这里不再额外处理
+
+  const slides = useMemo(() => {
+    return images.map((url, i) => {
+      // 当前图优先使用 displaySrc（可能为 blob: 以避免重复请求）
+      if (i === currentIndex) {
+        return { src: (displaySrc as string) || getProxiedImageUrl(url) };
+      }
+      const cached = imageManager.getCacheStatus(url)?.dataUrl;
+      return { src: cached || getProxiedImageUrl(url) };
+    });
+  }, [images, currentIndex, displaySrc]);
+
+  const plugins = useMemo(() => [Zoom, Fullscreen, Counter, Download], []);
+  // Zoom 插件参数：开启滚轮/触控/键盘无级缩放
+  const zoomOptions = useMemo(
+    () => ({
+      maxZoomPixelRatio: 4,
+      zoomInMultiplier: 1.2,
+      doubleTapDelay: 250,
+      doubleClickDelay: 250,
+      doubleClickMaxStops: 4,
+      keyboardMoveDistance: 40,
+      wheelZoomDistanceFactor: 80,
+      pinchZoomDistanceFactor: 60,
+      scrollToZoom: true,
+    }),
+    [],
+  );
+  const toolbarButtons = useMemo(
+    () => [
+      // 下载按钮改用官方 Download 插件提供的按钮与图标
+      showQueueStatus && useQueue && isLoading ? (
+        <div key="queue" style={{ marginRight: 8, fontSize: 12 }}>
+          队列加载中...
+        </div>
+      ) : null,
+      "close",
+    ],
+    [showQueueStatus, useQueue, isLoading],
+  );
+  const onHandlers = useMemo(
+    () => ({
+      view: ({ index }: any) => {
+        if (typeof index === "number" && index !== currentIndex) {
+          // 避免在渲染阶段直接 setState 引发深度更新
+          requestAnimationFrame(() => {
+            setCurrentIndex(index);
+            onImageChange?.(index);
+          });
+        }
+      },
+    }),
+    [currentIndex, onImageChange, setCurrentIndex],
+  );
+
+  // 镜像效果逻辑已移除
+
+  // 工具栏位置移动到底部中间
+  const lightboxStyles = useMemo(
+    () => ({
+      toolbar: {
+        top: "auto",
+        bottom: 24,
+        left: "50%",
+        right: "auto",
+        transform: "translateX(-50%)",
+        backgroundColor: "rgba(0,0,0,0)",
+        padding: "6px 6px",
+        borderRadius: 8,
+      },
+      icon: {
+        transform: "scale(0.6)",
+        transformOrigin: "center",
+      },
+      // 给容器与每个 slide 添加对称内边距，修复左右间距不一致
+      container: {
+        paddingLeft: 24,
+        paddingRight: 8,
+        backgroundColor: "rgba(0,0,0,0.8)",
+      },
+      slide: {
+        paddingLeft: 12,
+        paddingRight: 12,
+        paddingBottom: 64, // 为工具栏预留空间，避免遮挡图片底部
+      },
+    }),
+    [],
+  );
+
+  // 增加拖动：为内部图片开启原生拖拽（拖出到其他应用/新标签）
   useEffect(() => {
     if (!visible) return;
-    zoomDrag.applyTransformNow();
-  }, [renderSrc, visible, zoomDrag]);
-
-  // 触控手势处理
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (!isMobile || !hasMultipleImages) return;
-    const touch = e.touches[0];
-    touchStartX.current = touch.clientX;
-    touchStartY.current = touch.clientY;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!isMobile || !hasMultipleImages) return;
-
-    const touch = e.changedTouches[0];
-    const deltaX = touch.clientX - touchStartX.current;
-    const deltaY = touch.clientY - touchStartY.current;
-
-    // 检查是否是横向滑动（而不是纵向滚动）
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-      if (deltaX > 0) {
-        // 向右滑动 - 上一张
-        goToPrevious();
-      } else {
-        // 向左滑动 - 下一张
-        goToNext();
-      }
-    }
-  };
-
-  if (!visible) return null;
+    const imgEl = document.querySelector(
+      ".yarl__slide_image img",
+    ) as HTMLImageElement | null;
+    if (!imgEl) return;
+    imgEl.setAttribute("draggable", "true");
+    const handleDragStart = (e: DragEvent) => {
+      const src =
+        (displaySrc as string) ||
+        (currentImage ? getProxiedImageUrl(currentImage) : "");
+      try {
+        if (src && e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "copy";
+          e.dataTransfer.setData("text/uri-list", src);
+          e.dataTransfer.setData("text/plain", src);
+        }
+      } catch {}
+    };
+    imgEl.addEventListener("dragstart", handleDragStart);
+    return () => imgEl.removeEventListener("dragstart", handleDragStart);
+  }, [visible, displaySrc, currentImage]);
 
   return (
-    <div
-      className={clsx(styles["image-viewer-overlay"], className)}
-      onClick={handleBackdropClick}
-      onTouchStart={(e) => {
-        // 如果已放大，优先进行平移拖拽；否则用于左右切换
-        if (zoomDrag.scaleRef.current > 1) {
-          zoomDrag.onTouchStart(e);
-        } else {
-          handleTouchStart(e);
-        }
-      }}
-      onTouchMove={(e) => {
-        if (zoomDrag.scaleRef.current > 1) {
-          zoomDrag.onTouchMove(e);
-        }
-      }}
-      onTouchEnd={(e) => {
-        if (zoomDrag.scaleRef.current > 1) {
-          zoomDrag.onTouchEnd(e);
-        } else {
-          handleTouchEnd(e);
-        }
-      }}
-      ref={containerRef}
-      onMouseDown={zoomDrag.onMouseDown}
-      onMouseMove={zoomDrag.onMouseMove}
-    >
-      {hasMultipleImages && (
-        <>
-          <button
-            className={clsx(styles["nav-hotzone"], styles["left-zone"])}
-            onClick={(e) => {
-              e.stopPropagation();
-              goToPrevious();
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            aria-label="上一张 热区"
-            title="上一张"
-          />
-          <button
-            className={clsx(styles["nav-hotzone"], styles["right-zone"])}
-            onClick={(e) => {
-              e.stopPropagation();
-              goToNext();
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            aria-label="下一张 热区"
-            title="下一张"
-          />
-        </>
-      )}
-
-      {/* 左箭头（透明图标） */}
-      {hasMultipleImages && (
-        <button
-          className={clsx(styles["overlay-icon"], styles["icon-left"])}
-          onClick={goToPrevious}
-          title="上一张 (←)"
-          aria-label="上一张"
-        >
-          <span className={styles["chevron"]}>‹</span>
-        </button>
-      )}
-
-      {/* 渲染图片：仅在拿到 dataUrl/缓存后再渲染，避免直接命中代理导致重复请求 */}
-      {(useQueue
-        ? !!(queueImageBlob || queueImageDataUrl)
-        : !!(
-            currentImageBlob ||
-            currentImageDataUrl ||
-            (currentImage && imageManager.getCacheStatus(currentImage)?.dataUrl)
-          )) &&
-        !(
-          (useQueue ? queueImageError : currentImageError) &&
-          !(useQueue
-            ? queueImageBlob || queueImageDataUrl
-            : currentImageBlob || currentImageDataUrl)
-        ) && (
-          <img
-            key={`${currentImage}-${currentIndex}`}
-            ref={imageRef}
-            src={displaySrc as string}
-            alt={`图片 ${currentIndex + 1}`}
-            className={clsx(styles["main-image"], {
-              [styles["image-loaded"]]: imageLoaded,
-            })}
-            style={{
-              cursor:
-                zoomDrag.scaleRef.current > 1
-                  ? (zoomDrag.dragging ? "grabbing" : "grab")
-                  : "default",
-            }}
-            onLoad={handleImageLoad}
-            onError={handleImageError}
-            draggable={zoomDrag.scaleRef.current <= 1}
-            onDragStart={handleImageDragStart}
-            loading="eager"
-          />
-        )}
-
-      {/* 加载指示器：以实际 isLoading 为准 */}
-      {isLoading && !(useQueue ? queueImageError : currentImageError) && (
-        <div className={styles["loading-placeholder"]}>
-          <div className={styles["loading-spinner"]} />
-          {showQueueStatus && useQueue && (
-            <div className={styles["queue-status"]}>队列加载中...</div>
-          )}
-        </div>
-      )}
-
-      {/* 错误提示：仅当未加载完成、当前不在加载中、且存在错误并且无可用 dataUrl 时显示 */}
-      {!imageLoaded &&
-        !isLoading &&
-        !(useQueue ? queueImageDataUrl : currentImageDataUrl) &&
-        (useQueue ? queueImageError : currentImageError) && (
-          <div className={styles["error-placeholder"]}>
-            <div className={styles["error-message"]}>图片加载失败</div>
-          </div>
-        )}
-
-      {/* 右箭头（透明图标） */}
-      {hasMultipleImages && (
-        <button
-          className={clsx(styles["overlay-icon"], styles["icon-right"])}
-          onClick={goToNext}
-          title="下一张 (→)"
-          aria-label="下一张"
-        >
-          <span className={styles["chevron"]}>›</span>
-        </button>
-      )}
-
-      {/* 右上角关闭按钮 */}
-      <div className={styles["top-right"]}>
-        <button
-          className={styles["toolbar-button"]}
-          onClick={onClose}
-          title="关闭"
-          aria-label="关闭"
-        >
-          <CloseIcon />
-        </button>
-      </div>
-
-      {/* 底部工具栏 - 居中浮层 */}
-      <div className={styles["bottom-toolbar"]}>
-        <div
-          className={clsx(styles["toolbar-button"], styles["pager"])}
-          aria-label={`第 ${currentIndex + 1} 张，共 ${images.length} 张`}
-        >
-          {currentIndex + 1}/{images.length}
-        </div>
-        <button
-          className={styles["toolbar-button"]}
-          onClick={zoomOut}
-          title="缩小"
-          aria-label="缩小"
-        >
-          <MinIcon />
-        </button>
-
-        <button
-          className={styles["toolbar-button"]}
-          onClick={zoomIn}
-          title="放大"
-          aria-label="放大"
-        >
-          <MaxIcon />
-        </button>
-        <button
-          className={styles["toolbar-button"]}
-          onClick={resetZoom}
-          title="重置"
-          aria-label="重置"
-        >
-          <ResetIcon />
-        </button>
-        <button
-          className={styles["toolbar-button"]}
-          onClick={downloadCurrentImage}
-          title="下载图片"
-          aria-label="下载图片"
-        >
-          <DownloadIcon />
-        </button>
-      </div>
-    </div>
+    <Lightbox
+      open={visible}
+      close={onClose}
+      slides={slides}
+      index={currentIndex}
+      carousel={{ finite: images.length <= 1 }}
+      styles={lightboxStyles as any}
+      plugins={plugins}
+      toolbar={{ buttons: toolbarButtons as any }}
+      on={onHandlers}
+      zoom={zoomOptions as any}
+    />
   );
 }
 

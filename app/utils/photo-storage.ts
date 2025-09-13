@@ -412,9 +412,12 @@ class PhotoStorage {
         throw new Error(`Invalid image format: ${blob.type}`);
       }
 
-      // 可选：计算哈希校验
+      // 可选：计算哈希校验（与保存时算法保持一致）
       if (photo.contentHash) {
-        const calculatedHash = await this.calculateBlobHash(blob);
+        const shouldUsePerceptual = this.isPerceptualHash(photo.contentHash);
+        const calculatedHash = shouldUsePerceptual
+          ? await this.calculateImageHashFromBlob(blob)
+          : await this.calculateBlobHash(blob);
         if (calculatedHash !== photo.contentHash) {
           throw new Error("Hash verification failed");
         }
@@ -465,6 +468,73 @@ class PhotoStorage {
     }
 
     return Math.abs(hash).toString(36);
+  }
+
+  /**
+   * 判断是否为感知哈希（由 0/1 组成的较长字符串）
+   */
+  private isPerceptualHash(hash: string): boolean {
+    return /^[01]{32,}$/.test(hash);
+  }
+
+  /**
+   * 从 Blob 计算感知哈希（与 calculateImageHash 相同算法）
+   */
+  private async calculateImageHashFromBlob(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      try {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              URL.revokeObjectURL(url);
+              reject(new Error("Canvas context not available"));
+              return;
+            }
+
+            const hashSize = 8;
+            canvas.width = hashSize;
+            canvas.height = hashSize;
+
+            ctx.drawImage(img, 0, 0, hashSize, hashSize);
+            const imageData = ctx.getImageData(0, 0, hashSize, hashSize);
+            const data = imageData.data;
+
+            let sum = 0;
+            const pixels: number[] = [];
+            for (let i = 0; i < data.length; i += 4) {
+              const gray = Math.round(
+                0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2],
+              );
+              pixels.push(gray);
+              sum += gray;
+            }
+            const average = sum / pixels.length;
+
+            let hash = "";
+            for (let i = 0; i < pixels.length; i++) {
+              hash += pixels[i] >= average ? "1" : "0";
+            }
+
+            URL.revokeObjectURL(url);
+            resolve(hash);
+          } catch (e) {
+            URL.revokeObjectURL(url);
+            reject(e);
+          }
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("Failed to load image for hash calculation"));
+        };
+        img.src = url;
+      } catch (e) {
+        reject(e);
+      }
+    });
   }
 
   /**
@@ -1649,11 +1719,9 @@ if (typeof window !== "undefined") {
       try {
         // 获取收集前的统计
         const beforeStats = await photoStorage.getStats();
-        console.log("收集前统计:", beforeStats);
 
         // 清空所有数据，强制重新收集
         await photoStorage.clearPhotos();
-        console.log("已清空所有图片数据");
 
         // 重新收集
         const { photoCollector } = await import("./photo-collector");
@@ -1661,9 +1729,7 @@ if (typeof window !== "undefined") {
 
         // 获取收集后的统计
         const afterStats = await photoStorage.getStats();
-        console.log("收集后统计:", afterStats);
 
-        console.log("重新收集完成");
         return afterStats;
       } catch (error) {
         console.error("重新收集失败:", error);
@@ -1672,8 +1738,6 @@ if (typeof window !== "undefined") {
     },
     // 新增：查看收集详情
     getCollectionDetails: async () => {
-      console.log("=== 收集详情 ===");
-
       try {
         const stats = await photoStorage.getStats();
         console.log("当前统计:", stats);
@@ -1688,7 +1752,6 @@ if (typeof window !== "undefined") {
         let totalImages = 0;
         for (const session of allSessions.slice(0, 5)) {
           const messageCount = session.messages?.length || 0;
-          console.log(`会话 ${session.id}: ${messageCount} 条消息`);
           totalImages += messageCount; // 简化统计
         }
 
@@ -1701,8 +1764,6 @@ if (typeof window !== "undefined") {
     },
     // 新增：优化批量下载
     optimizedBatchDownload: async (maxConcurrent = 3, delayMs = 200) => {
-      console.log("=== 优化批量下载 ===");
-
       try {
         // 获取所有需要下载的图片
         const allPhotos = await photoStorage.getPhotos({
@@ -1713,8 +1774,6 @@ if (typeof window !== "undefined") {
         const photos = allPhotos.filter(
           (photo) => !photo.downloadStatus || photo.downloadStatus === "failed",
         );
-
-        console.log(`找到 ${photos.length} 张待下载图片`);
 
         if (photos.length === 0) {
           console.log("没有需要下载的图片");
@@ -1727,11 +1786,6 @@ if (typeof window !== "undefined") {
 
         for (let i = 0; i < photos.length; i += batchSize) {
           const batch = photos.slice(i, i + batchSize);
-          console.log(
-            `处理批次 ${Math.floor(i / batchSize) + 1}/${Math.ceil(
-              photos.length / batchSize,
-            )} (${batch.length} 张图片)`,
-          );
 
           // 并发下载当前批次
           const batchPromises = batch.map(async (photo) => {

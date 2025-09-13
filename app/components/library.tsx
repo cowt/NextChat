@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./library.module.scss";
 import "./library-mobile.scss"; // 导入移动端全局样式
@@ -8,6 +14,8 @@ import { photoCollector } from "../utils/photo-collector";
 import { PhotoInfo } from "../utils/photo-storage";
 import { ImageViewer } from "./image-viewer";
 import { MasonryLayout } from "./masonry-layout";
+import { usePhotosInfinite } from "../utils/use-photos-infinite";
+import { photoService } from "../utils/photo-service";
 
 // Icons
 import CloseIcon from "../icons/close.svg";
@@ -19,9 +27,8 @@ export function Library() {
   const [photos, setPhotos] = useState<PhotoInfo[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
   const [viewerVisible, setViewerVisible] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const { data, fetchNextPage, hasNextPage, isFetching, isFetchingNextPage } =
+    usePhotosInfinite();
   const [useQueue, setUseQueue] = useState(true); // 默认启用队列加载
   const [isSmartCollecting, setIsSmartCollecting] = useState(false); // 智能收集状态
   const [isRetrying, setIsRetrying] = useState(false); // 重试状态
@@ -51,100 +58,14 @@ export function Library() {
   // 防抖锁，避免同时多源触发导致重复加载
   const loadingLockRef = useRef(false);
 
-  // 加载照片
-  const loadPhotos = useCallback(async (reset = false) => {
-    try {
-      if (reset) {
-        setIsLoading(true);
-        photoCollector.resetPagination();
-      } else {
-        setIsLoadingMore(true);
-      }
-
-      // 设置超时机制，避免无限等待
-      const initPromise = photoCollector.initialize();
-      const timeoutPromise = new Promise(
-        (_, reject) => setTimeout(() => reject(new Error("初始化超时")), 8000), // 减少超时时间
-      );
-
-      await Promise.race([initPromise, timeoutPromise]);
-
-      let newPhotos: PhotoInfo[] = [];
-
-      if (reset) {
-        try {
-          // 首屏只加载12张，提升加载速度
-          newPhotos = await photoCollector.getPhotos({ limit: 12, offset: 0 });
-        } catch (error) {
-          console.warn("[Library] 常规获取失败，尝试紧急回退模式:", error);
-          newPhotos = await photoCollector.getPhotosFromSessions();
-        }
-      } else {
-        newPhotos = await photoCollector.loadMore();
-      }
-
-      // 异步获取统计信息，不阻塞UI
-      photoCollector
-        .getStats()
-        .then((stats) => {
-          setStats(stats);
-        })
-        .catch((error) => {
-          console.warn("[Library] 获取统计信息失败:", error);
-        });
-
-      // 异步获取下载状态统计
-      import("../utils/photo-storage")
-        .then(({ photoStorage }) => photoStorage.getDownloadStats())
-        .then((downloadStats) => {
-          setDownloadStats(downloadStats);
-        })
-        .catch((error) => {
-          console.warn("[Library] 获取下载状态统计失败:", error);
-        });
-
-      if (reset) {
-        setPhotos(newPhotos);
-      } else {
-        setPhotos((prevPhotos) => [...prevPhotos, ...newPhotos]);
-      }
-
-      // 如果返回的数量少于限制，说明没有更多了
-      const limit = reset ? 12 : 20;
-      const more = newPhotos.length > 0 && newPhotos.length >= limit;
-      setHasMore(more);
-    } catch (error) {
-      console.error("[Library] 加载照片失败:", error);
-
-      // 即使失败也要停止加载状态
-      if (reset) {
-        setPhotos([]);
-        setStats({
-          total: 0,
-          userPhotos: 0,
-          botPhotos: 0,
-          sessionsWithPhotos: 0,
-          lastUpdated: Date.now(),
-        });
-        setHasMore(false);
-      }
-    } finally {
-      // 确保在加载结束后，无论成功失败都停止加载状态
-      if (reset) {
-        setIsLoading(false);
-      } else {
-        setTimeout(() => {
-          setIsLoadingMore(false);
-          loadingLockRef.current = false; // 释放加载锁
-        }, 100); // 进一步减少延迟时间
-      }
-    }
-  }, []);
-
-  // 初始化加载
+  // 聚合分页数据
+  const mergedPhotos = useMemo(
+    () => (data?.pages.flat() || []) as PhotoInfo[],
+    [data],
+  );
   useEffect(() => {
-    loadPhotos(true);
-  }, [loadPhotos]);
+    setPhotos(mergedPhotos);
+  }, [mergedPhotos]);
 
   // 监听新照片事件，新增的放在最前面
   useEffect(() => {
@@ -201,8 +122,7 @@ export function Library() {
   // 手动刷新
   const handleRefresh = useCallback(async () => {
     await photoCollector.refresh();
-    await loadPhotos(true);
-  }, [loadPhotos]);
+  }, []);
 
   // 智能重试失败图片
   const handleSmartRetry = useCallback(async () => {
@@ -213,46 +133,24 @@ export function Library() {
 
     try {
       console.log("[Library] 开始智能重试失败图片...");
-
-      const { photoStorage } = await import("../utils/photo-storage");
-
-      // 阶段1：重试下载失败的图片
-      const result1 = await photoStorage.smartRetryFailedImages((progress) => {
-        setRetryProgress(progress);
-      });
-
+      const { stage1, stage2 } = await photoService.runSmartRetry((p) =>
+        setRetryProgress(p),
+      );
       console.log(
-        `[Library] 智能重试(阶段1-下载失败)完成: 成功 ${result1.success}, 失败 ${result1.failed}, 跳过 ${result1.skipped}`,
+        `[Library] 智能重试完成: 阶段1 成功 ${stage1.success}, 失败 ${stage1.failed}; 阶段2 成功 ${stage2.success}, 失败 ${stage2.failed}`,
       );
-
-      // 阶段2：仅重试缺失缩略图（限制数量，避免压力过大）
-      console.log("[Library] 开始重试缺失缩略图...");
-      const result2 = await photoStorage.retryMissingThumbnails(
-        2,
-        100,
-        (progress) => {
-          setRetryProgress(progress);
-        },
-      );
-
-      console.log(
-        `[Library] 智能重试(阶段2-缩略图)完成: 成功 ${result2.success}, 失败 ${result2.failed}`,
-      );
-
-      // 重试完成后刷新数据
-      await loadPhotos(true);
 
       // 显示结果通知
-      const totalRecovered = (result1.success || 0) + (result2.success || 0);
+      const totalRecovered = (stage1.success || 0) + (stage2.success || 0);
       if (totalRecovered > 0) {
         console.log(`✅ 成功恢复 ${totalRecovered} 张图片/缩略图！`);
       }
-      const totalFailed = (result1.failed || 0) + (result2.failed || 0);
+      const totalFailed = (stage1.failed || 0) + (stage2.failed || 0);
       if (totalFailed > 0) {
         console.warn(`⚠️ ${totalFailed} 张仍存在问题（包含图片或缩略图）`);
       }
-      if (result1.skipped > 0) {
-        console.log(`⏭️ 跳过 ${result1.skipped} 张不适合重试的图片`);
+      if (stage1.skipped && stage1.skipped > 0) {
+        console.log(`⏭️ 跳过 ${stage1.skipped} 张不适合重试的图片`);
       }
     } catch (error) {
       console.error("[Library] 智能重试失败:", error);
@@ -260,7 +158,7 @@ export function Library() {
       setIsRetrying(false);
       setRetryProgress({ current: 0, total: 0, success: 0, failed: 0 });
     }
-  }, [isRetrying, downloadStats.failed, loadPhotos]);
+  }, [isRetrying, downloadStats.failed]);
 
   // 批量重试失败图片
   const handleBatchRetry = useCallback(async () => {
@@ -271,19 +169,13 @@ export function Library() {
 
     try {
       console.log("[Library] 开始批量重试失败图片...");
-
-      const { photoStorage } = await import("../utils/photo-storage");
-
-      const result = await photoStorage.retryFailedImages(2, 2, (progress) => {
-        setRetryProgress(progress);
-      });
+      const result = await photoService.runBatchRetry(2, 2, (p) =>
+        setRetryProgress(p),
+      );
 
       console.log(
         `[Library] 批量重试完成: 成功 ${result.success}, 失败 ${result.failed}`,
       );
-
-      // 重试完成后刷新数据
-      await loadPhotos(true);
 
       // 显示结果
       if (result.success > 0) {
@@ -298,16 +190,17 @@ export function Library() {
       setIsRetrying(false);
       setRetryProgress({ current: 0, total: 0, success: 0, failed: 0 });
     }
-  }, [isRetrying, downloadStats.failed, loadPhotos]);
+  }, [isRetrying, downloadStats.failed]);
 
   // 加载更多照片（带防抖锁）
   const handleLoadMore = useCallback(async () => {
     if (loadingLockRef.current) return;
-    if (isLoading || isLoadingMore || !hasMore) return;
+    if (isFetching || isFetchingNextPage || !hasNextPage) return;
 
     loadingLockRef.current = true;
-    await loadPhotos(false);
-  }, [isLoading, isLoadingMore, hasMore, loadPhotos]);
+    await fetchNextPage();
+    loadingLockRef.current = false;
+  }, [isFetching, isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   const handleImageClick = useCallback(
     (index: number) => {
@@ -502,7 +395,7 @@ export function Library() {
 
       {/* 将滚动容器 ref 挂在真正滚动的元素上 */}
       <div className={styles.library} ref={scrollContainerRef}>
-        {isLoading && !isSmartCollecting ? (
+        {isFetching && photos.length === 0 && !isSmartCollecting ? (
           <>
             <div className={styles.loadingState}>
               <div className={styles.loadingSpinner} />
@@ -531,8 +424,8 @@ export function Library() {
               // 仍然传入 onLoadMore 以兼容 MasonryLayout 的内部触发
               // 通过 loadingLockRef 和 isLoadingMore 防止重复加载
               onLoadMore={handleLoadMore}
-              hasMore={hasMore}
-              loading={isLoadingMore}
+              hasMore={!!hasNextPage}
+              loading={isFetchingNextPage}
               className={styles.photoWall}
               columns={8}
               gap={6}

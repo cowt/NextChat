@@ -55,6 +55,10 @@ export function MasonryLayout({
   const [totalHeight, setTotalHeight] = useState<number>(0);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const virtualWindowRef = useRef<{ top: number; bottom: number }>({
+    top: 0,
+    bottom: 0,
+  });
 
   // 根据容器宽度动态调整列数（充分利用空间）
   const dynamicColumns = useMemo(() => {
@@ -150,8 +154,62 @@ export function MasonryLayout({
   useEffect(() => {
     const layouted = calculateLayout(photos);
     setLayoutedPhotos(layouted);
-    // 调试日志移除
   }, [photos, calculateLayout]);
+
+  // 虚拟化：仅渲染在视口附近的项目
+  const [visibleRange, setVisibleRange] = useState<{
+    start: number;
+    end: number;
+  }>({ start: 0, end: 0 });
+  const overscan = 800; // 预留渲染区，减少滚动抖动
+
+  const recomputeVisibleRange = useCallback(() => {
+    const root = scrollRoot || containerRef.current;
+    if (!root) return;
+    const scrollTop =
+      root === containerRef.current
+        ? root.scrollTop
+        : (root as HTMLElement).scrollTop;
+    const viewportHeight =
+      root === containerRef.current
+        ? root.clientHeight
+        : (root as HTMLElement).clientHeight;
+    virtualWindowRef.current = {
+      top: Math.max(0, scrollTop - overscan),
+      bottom: scrollTop + viewportHeight + overscan,
+    };
+    // 通过 top/bottom 反算 index 边界（线性扫描，因已按 top 单调递增）
+    let start = 0;
+    let end = layoutedPhotos.length;
+    for (let i = 0; i < layoutedPhotos.length; i++) {
+      if (
+        layoutedPhotos[i].top + layoutedPhotos[i].calculatedHeight >=
+        virtualWindowRef.current.top
+      ) {
+        start = i;
+        break;
+      }
+    }
+    for (let i = start; i < layoutedPhotos.length; i++) {
+      if (layoutedPhotos[i].top > virtualWindowRef.current.bottom) {
+        end = i + 1;
+        break;
+      }
+    }
+    setVisibleRange({ start, end });
+  }, [layoutedPhotos, scrollRoot]);
+
+  useEffect(() => {
+    recomputeVisibleRange();
+  }, [recomputeVisibleRange, layoutedPhotos, containerWidth, totalHeight]);
+
+  useEffect(() => {
+    const root = scrollRoot || containerRef.current;
+    if (!root) return;
+    const handler = () => recomputeVisibleRange();
+    root.addEventListener("scroll", handler, { passive: true });
+    return () => root.removeEventListener("scroll", handler as any);
+  }, [scrollRoot, recomputeVisibleRange]);
 
   // 设置无限滚动观察者
   useEffect(() => {
@@ -284,11 +342,19 @@ export function MasonryLayout({
           height: totalHeight,
         }}
       >
-        {layoutedPhotos.map((p, idx) => (
-          <React.Fragment key={`${p.id}-${idx}`}>
-            {renderPhoto(p, idx)}
-          </React.Fragment>
-        ))}
+        {layoutedPhotos
+          .slice(
+            visibleRange.start,
+            Math.max(visibleRange.end, visibleRange.start + 1),
+          )
+          .map((p, localIdx) => {
+            const idx = visibleRange.start + localIdx;
+            return (
+              <React.Fragment key={`${p.id}-${idx}`}>
+                {renderPhoto(p, idx)}
+              </React.Fragment>
+            );
+          })}
       </div>
 
       {/* 加载更多触发器 */}
