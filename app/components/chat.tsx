@@ -130,6 +130,7 @@ function PinterestPanelStandalone(props: {
   const [pinLoading, setPinLoading] = useState(false);
   const [pinImages, setPinImages] = useState<string[]>([]);
   const [chipsCollapsed, setChipsCollapsed] = useState(false);
+  const [imageLoadingStates, setImageLoadingStates] = useState<boolean[]>([]);
   const quickPhrases = [
     "线稿",
     "fashion",
@@ -158,8 +159,11 @@ function PinterestPanelStandalone(props: {
         ? data.images.map((it: any) => it?.imageUrl || it?.url).filter(Boolean)
         : [];
       setPinImages(images);
+      // 初始化所有图片的加载状态为 true
+      setImageLoadingStates(new Array(images.length).fill(true));
     } catch {
       setPinImages([]);
+      setImageLoadingStates([]);
     } finally {
       setPinLoading(false);
     }
@@ -283,6 +287,7 @@ function PinterestPanelStandalone(props: {
             {pinImages.map((u, idx) => {
               const src = `/api/images/proxy?url=${encodeURIComponent(u)}`;
               const isSelecting = selectingIndex === idx;
+              const isLoading = imageLoadingStates[idx];
               return (
                 <div
                   key={src}
@@ -325,10 +330,42 @@ function PinterestPanelStandalone(props: {
                     pointerEvents: isSelecting ? "none" : "auto",
                   }}
                 >
+                  {isLoading && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "var(--gray-50)",
+                        zIndex: 1,
+                      }}
+                    >
+                      <LoadingIcon />
+                    </div>
+                  )}
                   <img
                     src={src}
                     alt=""
                     loading="lazy"
+                    onLoad={() => {
+                      setImageLoadingStates((prev) => {
+                        const next = [...prev];
+                        next[idx] = false;
+                        return next;
+                      });
+                    }}
+                    onError={() => {
+                      setImageLoadingStates((prev) => {
+                        const next = [...prev];
+                        next[idx] = false;
+                        return next;
+                      });
+                    }}
                     style={{
                       width: "100%",
                       height: "100%",
@@ -522,6 +559,11 @@ function useSubmitHandler() {
     if (e.key !== "Enter") return false;
     if (e.key === "Enter" && (e.nativeEvent.isComposing || isComposing.current))
       return false;
+    const isiOS =
+      typeof navigator !== "undefined" &&
+      /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isAndroid =
+      typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
     return (
       (config.submitKey === SubmitKey.AltEnter && e.altKey) ||
       (config.submitKey === SubmitKey.CtrlEnter && e.ctrlKey) ||
@@ -531,7 +573,10 @@ function useSubmitHandler() {
         !e.altKey &&
         !e.ctrlKey &&
         !e.shiftKey &&
-        !e.metaKey)
+        !e.metaKey &&
+        // 在 iOS/Android 上，软键盘“换行”应作为换行而非发送
+        !isiOS &&
+        !isAndroid)
     );
   };
 
@@ -1316,6 +1361,10 @@ function _Chat() {
   const [showExport, setShowExport] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    // 提示软键盘显示换行键（iOS/Android 生效，类型缺失用 DOM API 设置）
+    inputRef.current?.setAttribute("enterkeyhint", "enter");
+  }, []);
   const [userInput, setUserInput] = useState("");
   const [selectedCheckboxItems, setSelectedCheckboxItems] = useState<
     Set<string>
