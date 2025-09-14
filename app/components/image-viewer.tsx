@@ -11,7 +11,6 @@ import { imageManager } from "../utils/image-manager";
 import Lightbox from "yet-another-react-lightbox";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import Fullscreen from "yet-another-react-lightbox/plugins/fullscreen";
-import Counter from "yet-another-react-lightbox/plugins/counter";
 import Download from "yet-another-react-lightbox/plugins/download";
 
 export interface ImageViewerProps {
@@ -665,7 +664,7 @@ export function ImageViewer({
     return images.map((url, idx) => ({ src: pickSrc(url, idx) }));
   }, [images, currentIndex, displaySrc, renderSrc]);
 
-  const plugins = useMemo(() => [Zoom, Fullscreen, Counter, Download], []);
+  const plugins = useMemo(() => [Zoom, Fullscreen, Download], []);
   // Zoom 插件参数：开启滚轮/触控/键盘无级缩放
   const zoomOptions = useMemo(
     () => ({
@@ -689,9 +688,23 @@ export function ImageViewer({
           队列加载中...
         </div>
       ) : null,
+      // 计数器：将原先 Counter 插件在右上角的显示改到工具栏
+      images.length > 1 ? (
+        <div
+          key="counter"
+          style={{
+            color: "#fff",
+            opacity: 0.9,
+            fontSize: 13,
+            padding: "6px 8px",
+          }}
+        >
+          {`${currentIndex + 1} / ${images.length}`}
+        </div>
+      ) : null,
       "close",
     ],
-    [showQueueStatus, useQueue, isLoading],
+    [showQueueStatus, useQueue, isLoading, images.length, currentIndex],
   );
   const onHandlers = useMemo(
     () => ({
@@ -720,18 +733,33 @@ export function ImageViewer({
         right: "auto",
         transform: "translateX(-50%)",
         backgroundColor: "rgba(0,0,0,0)",
-        padding: "6px 6px",
+        padding: "6px 8px",
         borderRadius: 8,
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        flexWrap: "nowrap",
+        whiteSpace: "nowrap",
+        overflowX: "auto",
+        overflowY: "hidden",
+        WebkitOverflowScrolling: "touch",
+        maxWidth: "calc(100vw - 24px)",
+        msOverflowStyle: "none",
+        scrollbarWidth: "none",
       },
-      icon: {
-        transform: "scale(0.6)",
-        transformOrigin: "center",
-      },
-      // 给容器与每个 slide 添加对称内边距，修复左右间距不一致
+      // 隐藏滚动条（iOS/Android/桌面）
       container: {
         paddingLeft: 24,
         paddingRight: 8,
         backgroundColor: "rgba(0,0,0,0.8)",
+      },
+      button: {
+        display: "flex",
+        alignItems: "center",
+      },
+      icon: {
+        transform: "scale(0.6)",
+        transformOrigin: "center",
       },
       slide: {
         paddingLeft: 12,
@@ -766,16 +794,47 @@ export function ImageViewer({
     return () => imgEl.removeEventListener("dragstart", handleDragStart);
   }, [visible, displaySrc, currentImage]);
 
+  // 点击非图片/按钮/工具栏区域时关闭预览（移动端和桌面都生效）
+  useEffect(() => {
+    if (!visible) return;
+
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // 在图片、按钮、工具栏、导航等交互元素上点击则不关闭
+      const interactive = target.closest(
+        ".yarl__slide_image, .yarl__toolbar, .yarl__button, .yarl__navigation, .yarl__icon",
+      );
+      if (interactive) return;
+
+      // 只在 Lightbox 内部的点击才处理，避免误伤页面其它区域
+      const lightboxRoot = document.querySelector(".yarl__root");
+      if (lightboxRoot && lightboxRoot.contains(target)) {
+        onClose();
+      }
+    };
+
+    document.addEventListener("click", handleGlobalClick, true);
+    return () => document.removeEventListener("click", handleGlobalClick, true);
+  }, [visible, onClose]);
+
+  // 首次打开时用 props.initialIndex，后续交给内部 currentIndex 控制
+  const indexForLightbox =
+    visible && !prevVisibleRef.current ? initialIndex : currentIndex;
+
   return (
     <Lightbox
+      key={`${instanceIdRef.current}-${initialIndex}-${visible ? 1 : 0}`}
       open={visible}
       close={onClose}
       slides={slides}
-      index={currentIndex}
+      index={indexForLightbox}
       carousel={{ finite: images.length <= 1, preload: 0 as any }}
       animation={{ fade: 0 }}
       styles={lightboxStyles as any}
       plugins={plugins}
+      controller={{ closeOnBackdropClick: true } as any}
       toolbar={{ buttons: toolbarButtons as any }}
       on={onHandlers}
       zoom={zoomOptions as any}
