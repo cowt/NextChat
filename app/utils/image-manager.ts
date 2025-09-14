@@ -207,6 +207,15 @@ class ImageManager {
             const response = await fetch(url);
             const blob = await response.blob();
 
+            // 严格校验：非 image 视为空消息，返回可识别结果，不抛错
+            if (!blob.type || !blob.type.startsWith("image/")) {
+              return {
+                url,
+                loading: false,
+                error: "NON_IMAGE",
+              };
+            }
+
             let dataUrl: string;
             if (compress && blob.size > 256 * 1024) {
               // 使用压缩函数，直接返回dataUrl
@@ -290,7 +299,25 @@ class ImageManager {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
+        // 若返回的不是图片，视为空消息，不抛错
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.startsWith("image/")) {
+          return {
+            url,
+            loading: false,
+            error: "NON_IMAGE",
+          };
+        }
+
         const blob = await response.blob();
+
+        if (!blob.type || !blob.type.startsWith("image/")) {
+          return {
+            url,
+            loading: false,
+            error: "NON_IMAGE",
+          };
+        }
 
         // 获取图片尺寸
         const { width, height } = await this.getImageDimensions(blob);
@@ -472,6 +499,10 @@ export const imageManager = new ImageManager();
 // 兼容性API，保持与原有代码的兼容
 export function cacheImageToBase64Image(imageUrl: string): Promise<string> {
   return imageManager.loadImage(imageUrl, { compress: true }).then((result) => {
+    // 非图片（NON_IMAGE）时，返回空串，让上游跳过该分片
+    if (result.error === "NON_IMAGE") {
+      return "";
+    }
     if (result.error) {
       throw new Error(result.error);
     }

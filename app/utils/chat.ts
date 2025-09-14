@@ -82,9 +82,15 @@ export async function preProcessImageContentBase(
     if (part?.type == "image_url" && part?.image_url?.url) {
       try {
         const url = await cacheImageToBase64Image(part?.image_url?.url);
+        // 当返回空串或 undefined 时，视为空图片，直接跳过该分片
+        if (!url) {
+          continue;
+        }
         result.push(await transformImageUrl(url));
       } catch (error) {
         console.error("Error processing image URL:", error);
+        // 新策略：非 image 视为空分片，跳过且不报错
+        continue;
       }
     } else {
       result.push({ ...part });
