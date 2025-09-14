@@ -208,14 +208,14 @@ export function useImage(
       return; // 直接返回，不进行任何加载
     }
 
-    // 如果正在加载中，更新状态但不重新发起请求
+    // 如果正在加载中，也进入统一的加载逻辑（会复用去重 Promise），
     if (cached && cached.loading) {
       setState((prev) => ({
         ...prev,
         loading: true,
         error: undefined,
       }));
-      return; // 等待当前加载完成
+      // 不 return，继续走下方统一的加载流程
     }
 
     // 设置加载状态并开始加载
