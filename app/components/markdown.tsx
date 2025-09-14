@@ -85,7 +85,7 @@ const MarkdownImage = React.memo(
         originalSrc.startsWith("blob:") ||
         originalSrc.startsWith("file:");
 
-      // 只做预加载，不替换src，避免二次渲染
+      // 只做预加载；在流式期间不替换src，避免切换导致的闪烁
       const preloadImageForDimensions = async () => {
         try {
           if (isLocalImage) {
@@ -105,7 +105,7 @@ const MarkdownImage = React.memo(
             };
             img.src = originalSrc;
 
-            // 将本地图片（blob:/data:）固化到 ServiceWorker 文件缓存，得到稳定可复用的站内URL
+            // 将本地图片（blob:/data:）固化到 ServiceWorker 文件缓存
             try {
               // 仅处理 blob:/data:，file: 无法在浏览器中抓取
               if (
@@ -143,71 +143,34 @@ const MarkdownImage = React.memo(
                   if (uploadResp.ok && isAliveRef.current) {
                     const json = await uploadResp.json().catch(() => null);
                     const stableUrl = json?.data;
-                    if (stableUrl) {
-                      setCurrentSrc(stableUrl);
+                    // 仅在非流式渲染阶段切换到稳定URL，避免流式期间src突变
+                    if (
+                      stableUrl &&
+                      !useChatStore
+                        .getState()
+                        .currentSession()
+                        .messages.some((m) => m.streaming)
+                    ) {
+                      try {
+                        // 先预加载稳定URL，加载完成后再切换，避免闪烁
+                        await new Promise<void>((resolve, reject) => {
+                          const img = new Image();
+                          img.onload = () => resolve();
+                          img.onerror = () => resolve(); // 失败也不阻断
+                          img.src = stableUrl;
+                        });
+                        if (isAliveRef.current) {
+                          setCurrentSrc(stableUrl);
+                        }
+                      } catch (_) {}
                     }
                   }
                 }
               }
             } catch (_) {}
           } else {
-            // 远程图片通过imageManager预加载
-            const { imageManager } = await import("../utils/image-manager");
-            const result = await imageManager.loadImage(originalSrc, {
-              compress: true,
-              preload: true,
-            });
-
-            // 只在组件仍然挂载时更新尺寸信息
-            if (isAliveRef.current && result.width && result.height) {
-              setImageDimensions({
-                width: result.width,
-                height: result.height,
-                aspectRatio: `${result.width} / ${result.height}`,
-              });
-            }
-
-            // 将外链图片固化到 ServiceWorker 文件缓存，获得稳定可复用的站内URL
-            // 仅在成功拿到 blob 且当前展示源不是缓存地址时尝试
-            try {
-              const displayNow = computeDisplaySrc(originalSrc).display || "";
-              const isCacheUrl =
-                typeof displayNow === "string" &&
-                displayNow.startsWith("/api/cache");
-              if (!isCacheUrl && result.blob && isAliveRef.current) {
-                // 确认 ServiceWorker 已接管页面；否则跳过固化
-                try {
-                  if (
-                    typeof navigator === "undefined" ||
-                    !navigator.serviceWorker ||
-                    !navigator.serviceWorker.controller
-                  ) {
-                    throw new Error("sw not controlling");
-                  }
-                } catch (_) {
-                  // SW 未接管，跳过固化
-                  return;
-                }
-                const extFromType =
-                  (result.blob.type || "").split("/").pop() || "bin";
-                const file = new File([result.blob], `image.${extFromType}`, {
-                  type: result.blob.type || "application/octet-stream",
-                });
-                const form = new FormData();
-                form.append("file", file);
-                const resp = await fetch("/api/cache/upload", {
-                  method: "POST",
-                  body: form,
-                });
-                if (resp.ok) {
-                  const json = await resp.json().catch(() => null);
-                  const stableUrl = json?.data;
-                  if (stableUrl && isAliveRef.current) {
-                    setCurrentSrc(stableUrl);
-                  }
-                }
-              }
-            } catch (_) {}
+            // 远程图片：不再额外预加载或上传，避免与 <img> 自身请求重复
+            // 尺寸与稳定URL持久化改到 onLoad 回调中处理
           }
         } catch (error) {
           // 预加载失败不影响显示，静默处理
@@ -265,6 +228,18 @@ const MarkdownImage = React.memo(
     }, [imageDimensions, imgProps.style, imgProps.src]);
 
     // 统一使用 currentSrc 渲染；加载失败时尝试在原始与代理之间回退
+    const handleImgLoad = async (e: React.SyntheticEvent<HTMLImageElement>) => {
+      // no-op: 开发日志已移除
+      const img = e.currentTarget;
+      if (isAliveRef.current) {
+        setImageDimensions({
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          aspectRatio: `${img.naturalWidth} / ${img.naturalHeight}`,
+        });
+      }
+    };
+
     return (
       <img
         src={currentSrc}
@@ -272,14 +247,15 @@ const MarkdownImage = React.memo(
         title={imgProps.title}
         className={imgProps.className}
         style={imageStyle}
-        loading={imgProps.src?.startsWith("data:") ? "eager" : "lazy"} // 本地图片立即加载
+        loading={imgProps.src?.startsWith("data:") ? "eager" : "lazy"}
         decoding="async"
         referrerPolicy="no-referrer"
         crossOrigin="anonymous"
+        onLoad={handleImgLoad}
         onError={() => {
+          // no-op: 开发日志已移除
           try {
             const { original, proxied } = computeDisplaySrc(imgProps.src);
-            // 若当前为代理，回退原始；若当前为原始，切换代理
             if (currentSrc === proxied && original) {
               setCurrentSrc(original);
             } else if (currentSrc === original && proxied) {

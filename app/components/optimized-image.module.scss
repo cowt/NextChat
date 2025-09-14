@@ -1,6 +1,8 @@
 .container {
   position: relative;
-  display: flex;
+  display: inline-flex; /* 让容器宽度随内容收缩，避免占满整行 */
+  width: fit-content;
+  max-width: 100%;
   align-items: center;
   justify-content: center;
   overflow: hidden;

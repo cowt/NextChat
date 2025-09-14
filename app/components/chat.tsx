@@ -93,6 +93,7 @@ import Locale from "../locales";
 
 import { IconButton } from "./button";
 import styles from "./chat.module.scss";
+import FishSwim from "./fish";
 
 import {
   List,
@@ -1259,23 +1260,16 @@ function BusyOverlay(props: {
 }) {
   if (!props.active) return null;
   const seconds = Math.max(0, Math.floor((props.elapsedMs ?? 0) / 1000));
-  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const ss = String(seconds % 60).padStart(2, "0");
   return (
     <div role="dialog" aria-modal="true" className={styles["busy-overlay"]}>
       <div className={styles["busy-title"]} aria-live="polite">
         <div className={styles["fish-track"]}>
-          <span
-            className={styles["fish"]}
-            style={
-              {
-                "--fish-range": "180px",
-                "--fish-box": "7ch",
-              } as React.CSSProperties
-            }
-          >
-            <span className={styles["fish-reveal"]}>{"><))))>"}</span>
-          </span>
+          <FishSwim
+            vertical="jump"
+            amplitude="1em"
+            jumpDurationSec={1.2}
+            durationSec={7}
+          />
         </div>
       </div>
     </div>

@@ -499,9 +499,10 @@
 
 .chat-message-item-image {
   /* 默认保持等比缩放，避免挤压变形 */
-  width: 30%;
+  width: clamp(280px, 45%, 560px);
   height: auto;
   max-width: 100%;
+  max-height: 60vh;
   margin-top: 10px;
 }
 

@@ -37,12 +37,17 @@ interface ImageCacheItem {
 class ImageManager {
   private cache = new Map<string, ImageCacheItem>();
   private loadingPromises = new Map<string, Promise<ImageLoadResult>>();
+  // 全局并发控制（限制同时进行的网络请求数量）
+  private readonly maxConcurrentNetworkRequests = 6;
+  private currentNetworkRequests = 0;
+  private waitQueue: Array<() => void> = [];
 
   // 配置选项
   private readonly maxCacheSize = 100; // 最大缓存数量
   private readonly maxImageSize = 256 * 1024; // 最大图片压缩大小 256KB
   private readonly retryCount = 1; // 减少到1次重试，避免网络压力
   private readonly retryDelay = 1000; // 增加重试延迟，避免网络拥塞
+  private readonly maxTotalBytes = 48 * 1024 * 1024; // 总缓存体积上限（约 48MB）
 
   constructor() {
     // 定期清理超出限制的缓存（但不基于时间过期）
@@ -234,7 +239,8 @@ class ImageManager {
               error: undefined,
               width: dimensions.width,
               height: dimensions.height,
-            };
+              __from: "local",
+            } as any;
           } catch (error) {
             throw error;
           }
@@ -269,7 +275,15 @@ class ImageManager {
                   compress && blob.size > this.maxImageSize
                     ? await compressImage(blob, this.maxImageSize)
                     : await this.blobToDataUrl(blob);
-                return { url, dataUrl, blob, loading: false, width, height };
+                return {
+                  url,
+                  dataUrl,
+                  blob,
+                  loading: false,
+                  width,
+                  height,
+                  __from: "cache-storage",
+                } as any;
               }
             }
           } catch (_) {}
@@ -286,6 +300,13 @@ class ImageManager {
           fetchOptions.credentials = "include";
         }
 
+        // 并发限流：仅对需要实际网络请求的场景申请令牌
+        let __acquiredNetworkSlot = false;
+        try {
+          await this.acquireNetworkSlot();
+          __acquiredNetworkSlot = true;
+        } catch (_) {}
+        const t0 = Date.now();
         const response = await fetch(fetchUrl, fetchOptions);
 
         if (!response.ok) {
@@ -335,7 +356,7 @@ class ImageManager {
           dataUrl = await this.blobToDataUrl(blob);
         }
 
-        return {
+        const __result: ImageLoadResult = {
           url,
           dataUrl,
           blob,
@@ -343,7 +364,14 @@ class ImageManager {
           width,
           height,
         };
+        // 释放网络令牌
+        if (__acquiredNetworkSlot) this.releaseNetworkSlot();
+        return __result;
       } catch (error) {
+        // 释放网络令牌
+        try {
+          this.releaseNetworkSlot();
+        } catch (_) {}
         attempt++;
 
         // 对于缓存404错误，不进行重试
@@ -447,16 +475,60 @@ class ImageManager {
    * 限制缓存大小
    */
   private limitCacheSize(): void {
-    if (this.cache.size <= this.maxCacheSize) return;
+    // 先按数量限制
+    if (this.cache.size > this.maxCacheSize) {
+      const entriesByTime = Array.from(this.cache.entries()).sort(
+        (a, b) => a[1].timestamp - b[1].timestamp,
+      );
+      const deleteCount = this.cache.size - this.maxCacheSize;
+      for (let i = 0; i < deleteCount; i++) {
+        this.cache.delete(entriesByTime[i][0]);
+      }
+    }
 
-    // 按时间戳排序，删除最旧的缓存
-    const entries = Array.from(this.cache.entries()).sort(
-      (a, b) => a[1].timestamp - b[1].timestamp,
+    // 再按总体积限制
+    let totalBytes = Array.from(this.cache.values()).reduce(
+      (sum, item) => sum + (item.size || 0),
+      0,
     );
+    if (totalBytes > this.maxTotalBytes) {
+      const entriesByTime = Array.from(this.cache.entries()).sort(
+        (a, b) => a[1].timestamp - b[1].timestamp,
+      );
+      for (
+        let i = 0;
+        i < entriesByTime.length && totalBytes > this.maxTotalBytes;
+        i++
+      ) {
+        const [key, item] = entriesByTime[i];
+        this.cache.delete(key);
+        totalBytes -= item.size || 0;
+      }
+    }
+  }
 
-    const deleteCount = this.cache.size - this.maxCacheSize;
-    for (let i = 0; i < deleteCount; i++) {
-      this.cache.delete(entries[i][0]);
+  // 获取网络请求令牌（并发限流）
+  private acquireNetworkSlot(): Promise<void> {
+    if (this.currentNetworkRequests < this.maxConcurrentNetworkRequests) {
+      this.currentNetworkRequests += 1;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      this.waitQueue.push(() => {
+        this.currentNetworkRequests += 1;
+        resolve();
+      });
+    });
+  }
+
+  // 释放网络请求令牌
+  private releaseNetworkSlot() {
+    if (this.currentNetworkRequests > 0) {
+      this.currentNetworkRequests -= 1;
+    }
+    const next = this.waitQueue.shift();
+    if (next) {
+      setTimeout(next, 0);
     }
   }
 

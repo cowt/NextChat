@@ -264,8 +264,27 @@ class PhotoCollector {
 
     const newPhotos: Omit<PhotoInfo, "id">[] = [];
 
+    // 仅收集“本地/稳定可复用”的图片，避免对外链再次发起网络请求
+    const shouldCollect = (url: string) => {
+      try {
+        if (!url) return false;
+        if (
+          url.startsWith("data:") ||
+          url.startsWith("blob:") ||
+          url.startsWith("file:") ||
+          url.includes("/api/cache/")
+        )
+          return true;
+        // 同源绝对地址或相对地址
+        const u = new URL(url, window.location.origin);
+        return u.origin === window.location.origin;
+      } catch (_) {
+        return false;
+      }
+    };
+
     for (const url of imageUrls) {
-      if (url && url.trim()) {
+      if (url && url.trim() && shouldCollect(url)) {
         const trimmedUrl = url.trim();
         const existingPhoto = await photoStorage.getPhotoById(
           `${session.id}-${message.id}-${btoa(trimmedUrl).slice(0, 8)}`,

@@ -554,9 +554,35 @@ export const useChatStore = createPersistStore(
             botMessage.streaming = false;
             if (message) {
               botMessage.content = message;
-              botMessage.date = new Date().toLocaleString();
-              get().onNewMessage(botMessage, session);
             }
+            botMessage.date = new Date().toLocaleString();
+            // 就地更新占位符消息，避免重新创建 messages 数组引发抖动
+            get().updateTargetSession(session, (session) => {
+              const lastMessage = session.messages[session.messages.length - 1];
+              if (lastMessage && lastMessage.id === botMessage.id) {
+                lastMessage.content = botMessage.content;
+                lastMessage.streaming = false;
+                lastMessage.date = botMessage.date;
+              }
+              session.lastUpdate = Date.now();
+            });
+            // 维持原有统计与后处理逻辑，但不替换数组
+            get().updateStat(botMessage, session);
+            get().checkMcpJson(botMessage);
+            if (typeof window !== "undefined") {
+              try {
+                import("../utils/photo-collector")
+                  .then(({ photoCollector }) => {
+                    photoCollector.onNewMessage(botMessage, session);
+                  })
+                  .catch((error) => {
+                    console.warn("[ChatStore] 照片收集器通知失败:", error);
+                  });
+              } catch (error) {
+                console.warn("[ChatStore] 照片收集器导入失败:", error);
+              }
+            }
+            get().summarizeSession(false, session);
             ChatControllerPool.remove(session.id, botMessage.id);
           },
           onBeforeTool(tool: ChatMessageTool) {
