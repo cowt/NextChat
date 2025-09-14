@@ -385,8 +385,8 @@ pre {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: var(--border-in-light);
-  box-shadow: var(--card-shadow);
+  border: none;
+  box-shadow: none;
   border-radius: 11px;
 }
 

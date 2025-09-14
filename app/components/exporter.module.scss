@@ -209,7 +209,9 @@
         }
 
         .message-image {
-          width: 100%;
+          width: auto;
+          height: auto;
+          max-width: 30%;
           margin-top: 10px;
         }
 
@@ -230,7 +232,7 @@
           }
 
           .message-image {
-            max-width: calc(100vw/3*2);
+            max-width: 30%;
           }
         }
 
@@ -246,7 +248,7 @@
           }
 
           .message-image {
-            max-width: calc(100vw/3*2);
+            max-width: 30%;
           }
         }
 

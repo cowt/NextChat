@@ -57,7 +57,11 @@ export function Popover(props: {
 
       const chatRect = chatRoot
         ? chatRoot.getBoundingClientRect()
-        : ({ left: 0, right: window.innerWidth } as any);
+        : ({
+            left: 0,
+            right: window.innerWidth,
+            top: window.innerHeight,
+          } as any);
 
       // 移动端采用全宽，避免出现横向滚动与布局抖动
       const isMobile = window.innerWidth <= 600;
@@ -65,8 +69,10 @@ export function Popover(props: {
       const width = isMobile
         ? Math.max(280, Math.min(window.innerWidth - 16 * 2, panelWidth))
         : Math.max(320, chatRect.right - chatRect.left - 46);
-      // 使弹层底部与输入面板顶部对齐
-      const bottom = Math.max(0, window.innerHeight - chatRect.top);
+      // 使弹层底部与输入面板顶部对齐（防御 NaN）
+      const rawBottom =
+        window.innerHeight - (chatRect?.top ?? window.innerHeight);
+      const bottom = Number.isFinite(rawBottom) ? Math.max(0, rawBottom) : 0;
       // 限制整体高度：不超过视口一半，且不超过输入框上方可用空间
       const maxPanelHeight = Math.min(
         Math.floor(window.innerHeight * 0.5),
